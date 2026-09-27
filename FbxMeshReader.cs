@@ -2,7 +2,7 @@ using System.Numerics;
 using Assimp;
 using Matrix4x4 = System.Numerics.Matrix4x4;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>Triangles for one material, in engine space, with vertices welded.</summary>
 public sealed class ImportedSection(string material)

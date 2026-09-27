@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 
-namespace UpkMeshScan.Gui;
+namespace MhoPackageModifier.Gui;
 
 /// <summary>
 /// WinForms front end over the same code the CLI runs. Every write to the game folder still goes
@@ -30,7 +30,7 @@ sealed partial class MainForm : Form
         public int HelpTextSize { get; set; } = 100;
     }
 
-    static readonly string SettingsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "UpkMeshScan", "settings.json");
+    static readonly string SettingsPath = Path.Combine(AppFolders.Roaming, "settings.json");
     Settings settings = LoadSettings();
 
     static Settings LoadSettings()

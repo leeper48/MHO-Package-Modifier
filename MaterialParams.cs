@@ -1,4 +1,4 @@
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>--material-params: every parameter expression of a Material (name, kind, default). Read-only.</summary>
 static class MaterialParams

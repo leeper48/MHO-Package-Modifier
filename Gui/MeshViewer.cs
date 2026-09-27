@@ -2,7 +2,7 @@ using System.Drawing.Imaging;
 using System.Numerics;
 using System.Runtime.InteropServices;
 
-namespace UpkMeshScan.Gui;
+namespace MhoPackageModifier.Gui;
 
 /// <summary>
 /// A 3D view of a StaticMesh, drawn by a small software renderer (no graphics library needed): depth buffer,

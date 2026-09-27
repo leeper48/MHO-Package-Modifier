@@ -3,7 +3,7 @@ using System.Drawing.Imaging;
 using System.Numerics;
 using System.Runtime.InteropServices;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// Image (PNG, JPG, BMP) -> DXT1 / DXT5 mip chain, for --import-texture, so no outside tool is needed. Format: DXT1 when

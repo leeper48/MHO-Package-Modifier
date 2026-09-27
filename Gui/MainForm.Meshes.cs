@@ -1,6 +1,6 @@
 using System.Numerics;
 
-namespace UpkMeshScan.Gui;
+namespace MhoPackageModifier.Gui;
 
 /// <summary>
 /// The Meshes tab's 3D view: the mesh selected in the list, with each section's diffuse texture when the package has it

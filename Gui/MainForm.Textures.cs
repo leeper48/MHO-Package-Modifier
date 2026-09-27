@@ -1,4 +1,4 @@
-namespace UpkMeshScan.Gui;
+namespace MhoPackageModifier.Gui;
 
 /// <summary>
 /// The Textures tab: the open package's textures (export, details) and "import an image as a new texture" (--import-texture:

@@ -1,6 +1,6 @@
 using System.Buffers.Binary;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// --add-level-actor: registers an actor export with the persistent level, so the game spawns it — needed when an

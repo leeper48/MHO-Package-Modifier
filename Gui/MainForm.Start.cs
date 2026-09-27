@@ -1,4 +1,4 @@
-namespace UpkMeshScan.Gui;
+namespace MhoPackageModifier.Gui;
 
 /// <summary>The Start tab: what the tool does, the safety rules in short, and one card per task that jumps to its tab.</summary>
 sealed partial class MainForm

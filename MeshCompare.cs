@@ -1,6 +1,6 @@
 using System.Numerics;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// --mesh-compare &lt;stock.upk&gt; &lt;mesh&gt; &lt;edited.upk&gt; &lt;mesh&gt;: how an edited mesh's vertices compare with the stock

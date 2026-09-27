@@ -1,6 +1,6 @@
 using System.Numerics;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>Engine-space LOD 0 ready to serialize: one shared vertex buffer, sections in the original order.</summary>
 public sealed class BuiltMesh

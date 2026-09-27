@@ -1,7 +1,7 @@
 using System.Buffers.Binary;
 using System.Numerics;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// --add-cell-placeholders ("option A"): placeholder buildings as one placed object per map cell, each with

@@ -2,7 +2,7 @@ using System.Numerics;
 using Assimp;
 using Matrix4x4 = System.Numerics.Matrix4x4;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// --zone-placeholders: low-poly stand-ins for every building-sized placed mesh in a zone's map tiles.

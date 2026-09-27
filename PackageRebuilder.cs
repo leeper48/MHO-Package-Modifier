@@ -1,6 +1,6 @@
 using System.Buffers.Binary;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>A new export: a copy of an existing export-table entry under a new name instance number, with new data.</summary>
 public sealed record NewExport(int TemplateIndex, int NameNumber, Func<long, byte[]> Build)

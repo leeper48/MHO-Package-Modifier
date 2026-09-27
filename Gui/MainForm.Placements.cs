@@ -1,4 +1,4 @@
-namespace UpkMeshScan.Gui;
+namespace MhoPackageModifier.Gui;
 
 /// <summary>
 /// The Placements tab (the Blender round trip for a tiled zone: --export-placements, edit, --import-placements) and the

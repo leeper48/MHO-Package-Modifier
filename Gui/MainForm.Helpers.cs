@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace UpkMeshScan.Gui;
+namespace MhoPackageModifier.Gui;
 
 /// <summary>Small layout helpers shared by the tabs: labelled rows, hints, headings, file pickers, number boxes.</summary>
 sealed partial class MainForm

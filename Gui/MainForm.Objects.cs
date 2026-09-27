@@ -1,4 +1,4 @@
-namespace UpkMeshScan.Gui;
+namespace MhoPackageModifier.Gui;
 
 /// <summary>
 /// The Objects tab: copy an object (material, mesh, texture, component, actor) with everything it needs into another

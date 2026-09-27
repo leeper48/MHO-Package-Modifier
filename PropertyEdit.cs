@@ -1,7 +1,7 @@
 using System.Buffers.Binary;
 using System.Globalization;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// --set-property: change the value of a float, int, Color or LinearColor property that already exists in

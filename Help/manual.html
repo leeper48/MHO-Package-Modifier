@@ -442,7 +442,7 @@ and its undo / redo steps. Select one, then:</p>
 <tr><td>Open selected package</td><td>Opens it on the Browse tab.</td></tr>
 </table>
 <p class="sub">Undo refuses if the package was changed outside the app since its last write (it would lose that change).
-History snapshots are kept in <code>%LOCALAPPDATA%\UpkMeshScan\history</code>, 20 steps per package.</p>
+History snapshots are kept in <code>%LOCALAPPDATA%\MhoPackageModifier\history</code>, 20 steps per package.</p>
 
 <h2 id="tools">Tab: Tools</h2>
 <p>Every command of the app, grouped, including those without a tab of their own (sky domes, component copies, level
@@ -476,8 +476,8 @@ safety steps as the tabs. Put paths with spaces in quotes.</p>
 <table>
 <tr><th>What</th><th>Where</th></tr>
 <tr><td>Originals</td><td><code>&lt;package&gt;.upk.bak</code> next to each changed package in the game folder</td></tr>
-<tr><td>Undo history</td><td><code>%LOCALAPPDATA%\UpkMeshScan\history</code> (20 steps per package)</td></tr>
-<tr><td>Settings</td><td><code>%APPDATA%\UpkMeshScan\settings.json</code></td></tr>
+<tr><td>Undo history</td><td><code>%LOCALAPPDATA%\MhoPackageModifier\history</code> (20 steps per package)</td></tr>
+<tr><td>Settings</td><td><code>%APPDATA%\MhoPackageModifier\settings.json</code></td></tr>
 <tr><td>Dry run results</td><td><code>import_out</code> next to the app</td></tr>
 <tr><td>Exports (FBX, textures, dumps)</td><td>The export folder (Meshes tab); placements go to <code>&lt;Zone&gt;_placements</code>, bakes to <code>&lt;Zone&gt;_bake</code></td></tr>
 <tr><td>Zone recipe inputs</td><td><code>ZoneData\&lt;Zone&gt;</code> next to the app (baked LODs, ground planes, layouts)</td></tr>

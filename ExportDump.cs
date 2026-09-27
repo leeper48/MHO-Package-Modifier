@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// Writes one export's raw bytes (.bin) and an annotated text dump (.txt): export info, the

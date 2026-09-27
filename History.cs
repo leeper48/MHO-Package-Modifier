@@ -1,11 +1,11 @@
 using System.Security.Cryptography;
 using System.Text;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// Undo / redo for game-file writes. Before every write through MeshImport.WriteLive and every --revert, the live
-/// file as it was is saved as a snapshot, OUTSIDE the game folder (%LOCALAPPDATA%\UpkMeshScan\history\&lt;package&gt;),
+/// file as it was is saved as a snapshot, OUTSIDE the game folder (%LOCALAPPDATA%\MhoPackageModifier\history\&lt;package&gt;),
 /// with the command that changed it and the SHA-256 of the file before and after. --undo puts the previous version
 /// back (the current one goes on the redo list), --redo re-applies it; a new write clears the redo list. Both refuse
 /// if the live file isn't the version the history expects (changed by another tool or copied over by hand), unless
@@ -21,7 +21,7 @@ static class History
 
     sealed record Entry(int Id, DateTime Time, string Before, string After, string Label);
 
-    static string Root => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "UpkMeshScan", "history");
+    static string Root => Path.Combine(AppFolders.Local, "history");
 
     /// <summary>One folder per live file: its name plus a short hash of its full path (two game folders don't mix).</summary>
     static string Folder(string upkPath)

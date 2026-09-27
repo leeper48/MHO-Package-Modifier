@@ -1,6 +1,6 @@
 using System.Numerics;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// Per-zone facts the GUI fills in for the user: the tile layout (ZoneData/&lt;Zone&gt;/layout.txt), the region library the

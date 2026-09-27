@@ -2,7 +2,7 @@ using System.Buffers.Binary;
 using System.Globalization;
 using System.Numerics;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// --add-sky-placeholders: puts low-poly placeholder buildings (an FBX in world space, e.g. from

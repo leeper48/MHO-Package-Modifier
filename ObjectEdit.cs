@@ -1,6 +1,6 @@
 using System.Buffers.Binary;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// --set-object: points one object reference in an export at another object, by path — an ObjectProperty, or one

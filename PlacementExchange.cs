@@ -4,7 +4,7 @@ using System.Numerics;
 using Assimp;
 using Matrix4x4 = System.Numerics.Matrix4x4;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// --export-placements / --import-placements: a round trip for adding placements (e.g. the missing back walls of
@@ -930,7 +930,7 @@ static class PlacementExchange
         if (edits.Count > 0 || baseBytes != null)
         {
             // Scratch copy: of the version before this sidecar's earlier imports, or of the live file.
-            string dir = Path.Combine(Path.GetTempPath(), "UpkMeshScan_placements");
+            string dir = Path.Combine(Path.GetTempPath(), "MhoPackageModifier_placements");
             Directory.CreateDirectory(dir);
             work = Path.Combine(dir, tile);
             if (baseBytes != null) File.WriteAllBytes(work, baseBytes); else File.Copy(live, work, overwrite: true);

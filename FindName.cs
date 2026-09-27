@@ -1,4 +1,4 @@
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>Lists every package whose imports or exports use a given object name. Read-only.</summary>
 static class FindName

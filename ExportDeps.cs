@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// --export-deps: everything one export pulls in, i.e. what a copy of it into another package would need.

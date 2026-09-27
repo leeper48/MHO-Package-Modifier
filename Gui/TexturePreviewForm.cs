@@ -1,7 +1,7 @@
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 
-namespace UpkMeshScan.Gui;
+namespace MhoPackageModifier.Gui;
 
 /// <summary>
 /// A texture viewer: the whole image or zoomed (fit, 25–800%), with its alpha over a checkerboard, or one channel at a

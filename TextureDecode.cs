@@ -2,7 +2,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// Texture data to a viewable bitmap, for the GUI's texture preview: the formats the game's textures use (DXT1, DXT3,

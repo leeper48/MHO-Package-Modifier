@@ -1,7 +1,7 @@
 using System.Numerics;
 using System.Security.Cryptography;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// FBX -> StaticMesh import, --revert, and the --verify-import-roundtrip self-test.
@@ -201,7 +201,7 @@ static class MeshImport
         Console.WriteLine($"  bounds rule vs stored: origin diff {Vector3.Distance(org, o.BoundsOrigin):0.####}, extent diff {Vector3.Distance((mx - mn) * 0.5f, o.BoundsExtent):0.####}, radius {rad:0.###} vs {o.BoundsRadius:0.###}");
 
         // FBX round trip.
-        string tempDir = Path.Combine(Path.GetTempPath(), "UpkMeshScan_roundtrip");
+        string tempDir = Path.Combine(Path.GetTempPath(), "MhoPackageModifier_roundtrip");
         Directory.CreateDirectory(tempDir);
         if (StaticMeshExport.Run(upkPath, pkg.PathOf(pkg.Exports[index]), tempDir, quiet: true, normals: true) != 0) return 1;
         string fbx = Path.Combine(tempDir, $"{o.Name}.fbx");

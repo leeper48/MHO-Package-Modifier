@@ -1,6 +1,6 @@
 using System.Buffers.Binary;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// --import-texture: adds a new Texture2D to a package from a .dds (DXT1/DXT5), as other mod tools inject textures
@@ -68,7 +68,7 @@ static class TextureImport
         {
             var enc = TextureEncode.FromImage(ddsPath, encodeFormat, split, scale, noMips, maxSize);
             Console.WriteLine($"  {Path.GetFileName(ddsPath)}: {enc.Width}x{enc.Height} -> {enc.FourCC}, {enc.Levels.Count} mips{(scale != 1f ? $", colour x{scale}" : "")}{(enc.FourCC == "DXT1" ? $" (alpha cut at {split})" : "")}");
-            ddsPath = Path.Combine(Path.GetTempPath(), $"upkmeshscan_{Guid.NewGuid():N}.dds");
+            ddsPath = Path.Combine(Path.GetTempPath(), $"mhopackagemodifier_{Guid.NewGuid():N}.dds");
             File.WriteAllBytes(ddsPath, WriteDds(enc));
         }
         // The .dds: header, pixel format, top mip.

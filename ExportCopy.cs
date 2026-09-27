@@ -1,6 +1,6 @@
 using System.Buffers.Binary;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// --copy-export: copies an export and everything it references (its closure) from one package into another,

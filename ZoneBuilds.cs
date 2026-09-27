@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// --build-zone: rebuilds a zone's main level from stock with its whole placeholder recipe, inside the tool (the
@@ -262,7 +262,7 @@ static class ZoneBuilds
         if (!dryRun && GameRunning()) { Console.WriteLine("The game is running; close it first. Nothing written."); return 1; }
 
         string stock = File.Exists(live + ".bak") ? live + ".bak" : live;
-        string work = Path.Combine(Path.GetTempPath(), "UpkMeshScan_zone", zone.Name);
+        string work = Path.Combine(Path.GetTempPath(), "MhoPackageModifier_zone", zone.Name);
         Directory.CreateDirectory(work);
         string workFile = Path.Combine(work, zone.Package);
         File.Copy(stock, workFile, overwrite: true);

@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>One texture parameter of a material, resolved to a Texture2D export in the same package.</summary>
 public sealed record MaterialTexture(string Parameter, string Texture, int ExportIndex);

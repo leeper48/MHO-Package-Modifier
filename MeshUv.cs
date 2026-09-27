@@ -1,6 +1,6 @@
 using System.Numerics;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// --uv-info: each UV channel's range per section of a StaticMesh (read-only).

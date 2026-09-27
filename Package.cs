@@ -1,7 +1,7 @@
 using System.IO.Compression;
 using System.Text;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 public sealed class PackageFormatException(string msg) : Exception(msg);
 

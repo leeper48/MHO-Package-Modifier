@@ -1,7 +1,7 @@
 using System.Numerics;
 using Assimp;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// Writes a StaticMesh's LOD 0 to FBX through AssimpNet, one mesh part per section, using the

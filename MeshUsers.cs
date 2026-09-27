@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// Lists StaticMeshComponents in one package whose StaticMesh property points at the named mesh

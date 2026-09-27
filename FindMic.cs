@@ -1,4 +1,4 @@
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// --find-mic: lists MaterialInstanceConstants in a folder whose Parent's name contains a text and whose static switches

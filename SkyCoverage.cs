@@ -1,6 +1,6 @@
 using System.Numerics;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// --sky-coverage: which view directions a placed sky/backdrop mesh covers, seen from a point (default: the centre of

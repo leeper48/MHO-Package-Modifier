@@ -1,4 +1,4 @@
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// Bounds-checked managed LZO1X decompressor (the public LZO1X stream format).

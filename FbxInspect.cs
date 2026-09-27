@@ -2,7 +2,7 @@ using System.Numerics;
 using Assimp;
 using Matrix4x4 = System.Numerics.Matrix4x4;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// Prints what Assimp sees in one or more FBX files: scene metadata (units, axes), node transforms,

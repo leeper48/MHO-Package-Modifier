@@ -1,7 +1,7 @@
 using System.Buffers.Binary;
 using System.Text;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// Texture file caches (.tfc): where the mips that aren't inside a package live. Cooked textures store those mips

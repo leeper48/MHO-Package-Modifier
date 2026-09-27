@@ -1,4 +1,4 @@
-namespace UpkMeshScan.Gui;
+namespace MhoPackageModifier.Gui;
 
 /// <summary>
 /// The Tools tab: every command-line command (CommandCatalog), grouped, with its syntax, what it does, and an example

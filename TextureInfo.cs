@@ -1,4 +1,4 @@
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>Texture2D header and mip table: size, format, cache name, and where each mip's data lives. Read-only.</summary>
 public sealed record TextureMip(int Width, int Height, uint Flags, int Count, int Size, int Offset, int InlineAt)

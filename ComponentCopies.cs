@@ -1,7 +1,7 @@
 using System.Buffers.Binary;
 using System.Numerics;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// --add-component-copies: adds copies of a placed StaticMeshComponent, each turned by an extra yaw around the same

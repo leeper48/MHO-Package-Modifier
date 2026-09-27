@@ -1,6 +1,6 @@
 using System.Buffers.Binary;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// --remove-components: takes StaticMeshComponents out of their StaticMeshCollectionActor's list, so the game doesn't

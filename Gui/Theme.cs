@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace UpkMeshScan.Gui;
+namespace MhoPackageModifier.Gui;
 
 /// <summary>Colours for one look (dark or light).</summary>
 sealed record Palette(

@@ -1,4 +1,4 @@
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>For each StaticMesh a package imports, which packages in the folder export a StaticMesh of that name. Read-only.</summary>
 static class ImportSources

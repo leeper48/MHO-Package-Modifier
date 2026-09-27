@@ -1,7 +1,7 @@
 using System.Buffers.Binary;
 using System.Numerics;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// --add-cloud-dome: a second sky dome just inside the zone's own, for a cloud layer with its own tiling. The sky

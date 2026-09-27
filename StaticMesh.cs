@@ -1,6 +1,6 @@
 using System.Numerics;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 public sealed record StaticMeshSection(int MaterialRef, string MaterialName, bool EnableCollision, int FirstIndex, int NumTriangles, int MinVertexIndex, int MaxVertexIndex,
     int ShadowCasting = 1, int MaterialIndex = 0, byte TrailingFlag = 0);

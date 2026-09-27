@@ -1,7 +1,7 @@
 using System.Numerics;
 using Assimp;
 
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// --export-placed: the real placed meshes of a zone's tiles, in world position, with the materials their components

@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace UpkMeshScan.Gui;
+namespace MhoPackageModifier.Gui;
 
 /// <summary>
 /// The manual (Help/manual.html next to the exe) in its own window, opened at a section. The command reference is

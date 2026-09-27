@@ -1,4 +1,4 @@
-namespace UpkMeshScan;
+namespace MhoPackageModifier;
 
 /// <summary>
 /// Every command-line command in one place: the CLI usage text, the GUI's Tools tab (command picker with a filled-in
