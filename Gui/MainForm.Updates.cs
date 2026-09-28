@@ -23,7 +23,7 @@ sealed partial class MainForm
     void AskUpdateConsent()
     {
         var answer = MessageBox.Show(this, "Check GitHub for new versions of MHO Package Modifier when the app starts (at most once a day)?\n\n" +
-            "The check reads the public release list of github.com/leeper48/MHO-UPK-Tools. Nothing about you or your game is sent, " +
+            "The check reads the public release list of github.com/leeper48/MHO-Package-Modifier. Nothing about you or your game is sent, " +
             "and nothing is installed without asking.\n\nYou can change this on the Start tab at any time.",
             "Check for updates?", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
         settings.UpdateCheckAsked = true;

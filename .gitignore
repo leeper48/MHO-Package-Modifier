@@ -1,0 +1,8 @@
+bin/
+obj/
+*.user
+.vs/
+# Build output, scans and Kurt's working files (publish/exports/<job>/): never committed
+publish/
+# Release zips (release.bat): uploaded to GitHub / Nexus, not committed
+releases/

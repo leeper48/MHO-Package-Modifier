@@ -7,7 +7,7 @@ using System.Text.Json;
 namespace MhoPackageModifier;
 
 /// <summary>
-/// Update check and self-update from the GitHub releases of leeper48/MHO-UPK-Tools. A release is a tag mpm-vX.Y.Z with an
+/// Update check and self-update from the GitHub releases of leeper48/MHO-Package-Modifier. A release is a tag vX.Y.Z with an
 /// asset MHO_Package_Modifier_vX.Y.Z.zip and its checksum MHO_Package_Modifier_vX.Y.Z.zip.sha256 (release.bat makes both).
 /// Updating downloads the zip, refuses it unless its SHA-256 matches, unpacks it, renames the running exe aside (Windows
 /// allows renaming a file in use, not overwriting it), copies the release's files over the app folder (only those: the
@@ -16,10 +16,10 @@ namespace MhoPackageModifier;
 /// </summary>
 static class Updater
 {
-    public const string Repo = "leeper48/MHO-UPK-Tools";
+    public const string Repo = "leeper48/MHO-Package-Modifier";
     public const string AssetPrefix = "MHO_Package_Modifier_v";
-    /// <summary>Release tags of this app: mpm-v&lt;version&gt; (MHO Extended Mod Manager's are extmm-v...).</summary>
-    public const string TagPrefix = "mpm-v";
+    /// <summary>Release tags: v&lt;version&gt;. (Until 2.53.1 the app lived in leeper48/MHO-UPK-Tools with MHO Extended Mod Manager, tagged mpm-v; none were published.)</summary>
+    public const string TagPrefix = "v";
 
     public sealed record Release(Version Version, string Tag, string Notes, string PageUrl, string? ZipUrl, string? ShaUrl, string? ZipName);
 
@@ -41,9 +41,8 @@ static class Updater
     }
 
     /// <summary>
-    /// The newest release of this app on GitHub, or null (none yet, or offline: the reason in note). The repository also
-    /// holds MHO Extended Mod Manager's releases (tags extmm-v...), so GitHub's single "latest" release may be the other
-    /// app's: the list is read and only published releases tagged mpm-v&lt;version&gt; count.
+    /// The newest release of this app on GitHub, or null (none yet, or offline: the reason in note). The list is read and
+    /// only published releases tagged v&lt;version&gt; with the app's zip count (drafts and pre-releases are skipped).
     /// </summary>
     public static async Task<(Release? Release, string Note)> LatestAsync()
     {

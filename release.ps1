@@ -1,5 +1,5 @@
 # Builds a release of MHO Package Modifier: releases\MHO_Package_Modifier_v<version>.zip and its .sha256.
-# Upload both to a GitHub release tagged mpm-v<version> (MHO Extended Mod Manager's tags are extmm-v...) (the app's updater looks there), and the zip to Nexus Mods.
+# Both go to a GitHub release tagged v<version> on leeper48/MHO-Package-Modifier (the app's updater looks there), the zip to Nexus Mods.
 # Self-contained (users need no .NET install); assimp.dll ships next to the exe. Run it through release.bat.
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -21,7 +21,7 @@ dotnet publish MhoPackageModifier.csproj -c Release -r win-x64 --self-contained 
 if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
 
 Copy-Item (Join-Path $here 'Dist\*') $app -Recurse -Force
-Copy-Item (Join-Path $here '..\LICENSE') (Join-Path $app 'LICENSE.txt') -Force
+Copy-Item (Join-Path $here 'LICENSE') (Join-Path $app 'LICENSE.txt') -Force
 foreach ($f in @('MHO_UPK_Mod.exe', 'assimp.dll', 'Help\manual.html', 'ZoneData', 'README.txt', 'THIRD-PARTY-NOTICES.txt', 'LICENSE.txt')) {
     if (-not (Test-Path (Join-Path $app $f))) { throw "The release is missing $f" }
 }
@@ -49,7 +49,7 @@ Write-Host "Release ready: $zip ($size)"
 Write-Host "Checksum:      $zip.sha256"
 Write-Host ''
 Write-Host 'Next:'
-Write-Host "  1. GitHub: push a tag (git tag -a mpm-v$version -m 'what changed', git push origin mpm-v$version): the workflow"
-Write-Host '     .github/workflows/mpm-release.yml builds this zip on GitHub and drafts the release; check it, press Publish.'
+Write-Host "  1. GitHub: push a tag (git tag -a v$version -m 'what changed', git push origin v$version): the workflow"
+Write-Host '     .github/workflows/release.yml builds this zip on GitHub and drafts the release; check it, press Publish.'
 Write-Host '     (Or by hand: Releases > Draft a new release with that tag, attach BOTH files, Publish.) The app finds it within a day.'
 Write-Host '  2. Nexus Mods: upload the same zip as a new file version.'

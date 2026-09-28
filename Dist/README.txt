@@ -47,10 +47,10 @@ The app is not code-signed (a signing certificate costs money every year; this i
 - Some antivirus tools flag new unsigned apps. If yours removes files, add an exclusion for the app folder,
   and please report the false positive: https://www.microsoft.com/wdsi/filesubmission
 - Download it only from its Nexus Mods page or from GitHub releases:
-  https://github.com/leeper48/MHO-UPK-Tools/releases
+  https://github.com/leeper48/MHO-Package-Modifier/releases
 - To check a download, compare its checksum with the .sha256 file published next to it on GitHub. In
   PowerShell:  Get-FileHash -Algorithm SHA256 .\MHO_Package_Modifier_v<version>.zip
-- The source code is public: https://github.com/leeper48/MHO-UPK-Tools
+- The source code is public: https://github.com/leeper48/MHO-Package-Modifier
 
 Privacy
 -------
