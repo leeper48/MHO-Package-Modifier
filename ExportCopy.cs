@@ -25,7 +25,7 @@ static class ExportCopy
     static readonly HashSet<string> PlainStructs = new(StringComparer.OrdinalIgnoreCase)
         { "vector", "vector2d", "vector4", "guid", "color", "linearcolor", "rotator", "box", "matrix", "plane", "quat", "intpoint", "sphere", "twovectors" };
     /// <summary>Array properties known to hold object references (4 bytes each).</summary>
-    static readonly HashSet<string> ObjectArrays = new(StringComparer.OrdinalIgnoreCase) { "expressions", "functionexpressions", "staticmeshcomponents", "materials" };
+    static readonly HashSet<string> ObjectArrays = new(StringComparer.OrdinalIgnoreCase) { "expressions", "functionexpressions", "staticmeshcomponents", "materials", "sockets", "clothingassets", "audioemotes", "bantertargets" };   // SkeletalMesh: its sockets and clothing assets (checked with --dump-export)
 
     public static int Run(string srcPath, string exportName, string dstPath, IReadOnlyCollection<string> cut, bool dryRun,
         string? rename = null, IReadOnlyDictionary<string, string>? replaceRefs = null)
@@ -38,6 +38,35 @@ static class ExportCopy
         int root = Array.FindIndex(src.Exports, e => src.PathOf(e).Equals(exportName, StringComparison.OrdinalIgnoreCase));
         if (root < 0) { Console.WriteLine($"  no export '{exportName}' (give the full path, e.g. package.group.name)"); return 2; }
 
+        var result = Copy(src, root, dst, cut, rename, replaceRefs);
+        if (result == null) return 1;
+        byte[] output = result.Output;
+        var Check = result.Check;
+
+        if (dryRun)
+        {
+            string dir = Path.Combine(AppContext.BaseDirectory, "import_out");
+            Directory.CreateDirectory(dir);
+            string target = Path.Combine(dir, Path.GetFileName(dstPath));
+            File.WriteAllBytes(target, output);
+            Console.WriteLine($"  dry run: wrote {target} (game folder untouched)");
+            return 0;
+        }
+        return MeshImport.WriteLive(dstPath, output, Check) ? 0 : 1;
+    }
+
+
+    /// <summary>What Copy produced: the whole target package (verified), the copied root's reference in it, and the verifier
+    /// (for re-checking the written file).</summary>
+    public sealed record CopyResult(byte[] Output, int RootRef, Func<byte[], List<string>> Check);
+
+    /// <summary>
+    /// The copy in memory (Run writes it; the Mod Manager's cross-hero costume move builds on it): the root export and its
+    /// closure appended to <paramref name="dst"/>, renumbered and verified. Null when it can't be done (the reason is printed).
+    /// </summary>
+    public static CopyResult? Copy(Package src, int root, Package dst, IReadOnlyCollection<string> cut,
+        string? rename = null, IReadOnlyDictionary<string, string>? replaceRefs = null, IReadOnlyCollection<int>? alsoCopy = null)
+    {
         // --rename: the copied root gets a new object name (so a copy that will differ from its source doesn't take over
         // the source's path in memory); everything inside it follows. --replace-ref: references to these source objects
         // point at existing target objects instead, and the source objects aren't copied (e.g. swap one texture).
@@ -73,7 +102,7 @@ static class ExportCopy
                 continue;
             }
             int t = Array.FindIndex(dst.Exports, e => dst.PathOf(e).Equals(to, StringComparison.OrdinalIgnoreCase));
-            if (fRef == 0 || t < 0) { Console.WriteLine($"  --replace-ref {from}={to}: {(fRef == 0 ? "no such export or import in the source" : "no such export in the target")}"); return 2; }
+            if (fRef == 0 || t < 0) { Console.WriteLine($"  --replace-ref {from}={to}: {(fRef == 0 ? "no such export or import in the source" : "no such export in the target")}"); return null; }
             replaced[fRef] = t + 1;
             Console.WriteLine($"  replacing references to {from} with the target's {to} ({dst.ClassOf(dst.Exports[t])})");
         }
@@ -85,6 +114,14 @@ static class ExportCopy
             string k = Key(src, r);
             if (rename != null && (k.StartsWith(rootPath + "|", StringComparison.OrdinalIgnoreCase) || k.StartsWith(rootPath + ".", StringComparison.OrdinalIgnoreCase)))
                 k = newRootPath + k[rootPath.Length..];
+            // An outer (at any depth) pointed at a target object: the path continues from that object's path.
+            for (int o = r > 0 ? src.Exports[r - 1].OuterIndex : 0, guard = 0; o > 0 && guard < 64; o = src.Exports[o - 1].OuterIndex, guard++)
+                if (replaced.TryGetValue(o, out int to) && to > 0)
+                {
+                    string from = src.PathOf(src.Exports[o - 1]), into = dst.PathOf(dst.Exports[to - 1]);
+                    if (k.StartsWith(from + ".", StringComparison.OrdinalIgnoreCase)) k = into + k[from.Length..];
+                    break;
+                }
             return k;
         }
 
@@ -99,6 +136,7 @@ static class ExportCopy
         var order = new List<int>();
         var queue = new Queue<int>();
         queue.Enqueue(root);
+        foreach (int extra in alsoCopy ?? []) queue.Enqueue(extra);   // more roots in the same pass (e.g. a costume's sound events)
         int cutRefs = 0;
         void EnqueueImportOuters(int r)
         {
@@ -117,7 +155,7 @@ static class ExportCopy
             List<Patch> list;
             try { list = Parse(src, src.ReadExportBytes(e), src.ClassOf(e)); }
             catch (Exception ex) when (ex is InvalidDataException or PackageFormatException or ArgumentOutOfRangeException)
-            { Console.WriteLine($"  can't copy {src.PathOf(e)} ({src.ClassOf(e)}): {ex.Message}"); return 1; }
+            { Console.WriteLine($"  can't copy {src.PathOf(e)} ({src.ClassOf(e)}): {ex.Message}"); return null; }
             patches[i] = list;
             order.Add(i);
             byte[] d = src.ReadExportBytes(e);
@@ -130,10 +168,11 @@ static class ExportCopy
                 else EnqueueImportOuters(r);
             }
             var (cls, super, outer, arch) = EntryRefs(src, i);
-            if (cls > 0) { Console.WriteLine($"  {src.PathOf(e)}: its class is defined in the package; not supported"); return 1; }
-            if (super != 0) { Console.WriteLine($"  {src.PathOf(e)}: has a SuperIndex (a class/struct); not supported"); return 1; }
-            if (outer > 0) queue.Enqueue(outer - 1);
+            if (cls > 0) { Console.WriteLine($"  {src.PathOf(e)}: its class is defined in the package; not supported"); return null; }
+            if (super != 0) { Console.WriteLine($"  {src.PathOf(e)}: has a SuperIndex (a class/struct); not supported"); return null; }
+            if (outer > 0 && !replaced.ContainsKey(outer)) queue.Enqueue(outer - 1);   // an outer pointed at a target object isn't copied
             if (arch > 0) queue.Enqueue(arch - 1);
+            else EnqueueImportOuters(arch);   // an imported archetype's outer can be an export (a component template: marvelgamecontent)
             EnqueueImportOuters(cls);
         }
 
@@ -144,7 +183,7 @@ static class ExportCopy
         {
             if (dstByPath.TryGetValue(Expect(dst, i + 1), out int existing))
             {
-                if (i == root && rename != null) { Console.WriteLine($"  '{newRootPath}' already exists in the target"); return 1; }
+                if (i == root && rename != null) { Console.WriteLine($"  '{newRootPath}' already exists in the target"); return null; }
                 map[i + 1] = existing;
             }
             else { copies.Add(i); map[i + 1] = dst.Exports.Length + copies.Count; }
@@ -189,26 +228,30 @@ static class ExportCopy
             }
             return importMap[r] = -(k + 1);
         }
-        int Map(int r) => r == 0 ? 0 : replaced.TryGetValue(r, out int rt) ? rt : r > 0 ? map.TryGetValue(r, out int m) ? m : throw new InvalidDataException($"reference {r} outside the closure") : MapImport(r);
+        int Map(int r) => r == 0 ? 0 : replaced.TryGetValue(r, out int rt) ? rt : r > 0 ? map.TryGetValue(r, out int m) ? m : throw new InvalidDataException($"reference {r} ({(r - 1 < src.Exports.Length ? src.PathOf(src.Exports[r - 1]) : "?")}) outside the closure") : MapImport(r);
 
         // 4. Data and table entries for the copies.
         var add = new List<NewExport>();
         foreach (int i in copies)
-        {
+          try
+          {
             byte[] d = src.ReadExportBytes(src.Exports[i]).ToArray();
             foreach (var pt in patches[i].Where(x => x.Kind != Kind.SelfOffset))
             {
                 int v = BinaryPrimitives.ReadInt32LittleEndian(d.AsSpan(pt.Offset));
-                int nv = pt.Kind == Kind.Name ? NameIdx(v) : IsCut(pt.Where, cut) ? 0 : Map(v);
+                int nv;
+                try { nv = pt.Kind == Kind.Name ? NameIdx(v) : IsCut(pt.Where, cut) ? 0 : Map(v); }
+                catch (InvalidDataException ex) { throw new InvalidDataException($"{pt.Where} (at {pt.Offset}): {ex.Message}"); }
                 BinaryPrimitives.WriteInt32LittleEndian(d.AsSpan(pt.Offset), nv);
             }
             byte[] entry = src.Body.AsSpan(src.ExportEntryStart[i], src.ExportEntryEnd[i] - src.ExportEntryStart[i]).ToArray();
             var (cls, _, outer, arch) = EntryRefs(src, i);
-            BinaryPrimitives.WriteInt32LittleEndian(entry.AsSpan(0), Map(cls));
-            BinaryPrimitives.WriteInt32LittleEndian(entry.AsSpan(8), Map(outer));
+            int Ctx(string what, int r) { try { return Map(r); } catch (InvalidDataException ex) { throw new InvalidDataException($"entry {what}: {ex.Message}"); } }
+            BinaryPrimitives.WriteInt32LittleEndian(entry.AsSpan(0), Ctx("class", cls));
+            BinaryPrimitives.WriteInt32LittleEndian(entry.AsSpan(8), Ctx("outer", outer));
             BinaryPrimitives.WriteInt32LittleEndian(entry.AsSpan(12), i == root && rename != null ? EnsureName(rename) : NameIdx(BinaryPrimitives.ReadInt32LittleEndian(entry.AsSpan(12))));
             if (i == root && rename != null) BinaryPrimitives.WriteInt32LittleEndian(entry.AsSpan(16), 0);
-            BinaryPrimitives.WriteInt32LittleEndian(entry.AsSpan(20), Map(arch));
+            BinaryPrimitives.WriteInt32LittleEndian(entry.AsSpan(20), Ctx("archetype", arch));
             byte[] data = d;
             var self = patches[i].Where(x => x.Kind == Kind.SelfOffset).Select(x => x.Offset).ToList();
             add.Add(new NewExport(0, 0, off =>
@@ -218,7 +261,8 @@ static class ExportCopy
                 foreach (int at in self) BinaryPrimitives.WriteInt32LittleEndian(b.AsSpan(at), checked((int)(off + at + 4)));   // absolute offset of the inline data
                 return b;
             }) { Entry = entry });
-        }
+          }
+          catch (InvalidDataException ex) { Console.WriteLine($"  can't copy {src.PathOf(src.Exports[i])} ({src.ClassOf(src.Exports[i])}): {ex.Message}"); return null; }
 
         int reused = order.Count - copies.Count;
         Console.WriteLine($"  closure: {order.Count} export(s); copying {copies.Count} ({copies.Sum(i => src.Exports[i].SerialSize):N0} bytes), reusing {reused} already in the target; {cutRefs} reference(s) cut to null");
@@ -235,20 +279,10 @@ static class ExportCopy
         }
         var problems = Check(output);
         Console.WriteLine($"  package: {dst.RawFile.Length:N0} -> {output.Length:N0} bytes, {dst.Exports.Length} -> {dst.Exports.Length + add.Count} exports");
-        if (problems.Count > 0) { Console.WriteLine("  verify: FAIL"); problems.Take(20).ToList().ForEach(p => Console.WriteLine($"    - {p}")); Console.WriteLine("  Nothing written."); return 1; }
+        if (problems.Count > 0) { Console.WriteLine("  verify: FAIL"); problems.Take(20).ToList().ForEach(p => Console.WriteLine($"    - {p}")); Console.WriteLine("  Nothing written."); return null; }
         Console.WriteLine($"  verify: PASS (tables = original + additions, existing exports byte-identical; every copied export re-parsed: same layout, every name and reference resolves to the same path as in the source, all other bytes identical)");
         Console.WriteLine($"  copied root: {src.PathOf(src.Exports[root])} is export #{map[root + 1]} in the target");
-
-        if (dryRun)
-        {
-            string dir = Path.Combine(AppContext.BaseDirectory, "import_out");
-            Directory.CreateDirectory(dir);
-            string target = Path.Combine(dir, Path.GetFileName(dstPath));
-            File.WriteAllBytes(target, output);
-            Console.WriteLine($"  dry run: wrote {target} (game folder untouched)");
-            return 0;
-        }
-        return MeshImport.WriteLive(dstPath, output, Check) ? 0 : 1;
+        return new CopyResult(output, map[root + 1], Check);
     }
 
     static bool IsCut(string where, IReadOnlyCollection<string> cut) => cut.Any(c => where.Split('.', '[')[0].Equals(c, StringComparison.OrdinalIgnoreCase));
@@ -294,12 +328,33 @@ static class ExportCopy
         return result;
     }
 
+    /// <summary>A name (8 bytes: index, number) or object reference (4 bytes) in an export's native data.</summary>
+    public readonly record struct NativeRef(int Offset, bool IsName, string Where);
+
+    /// <summary>
+    /// Native layouts this tool doesn't know, supplied by another program (the Mod Manager maps SkeletalMesh with
+    /// AnimExportCli's reader): (package, data, where the native data starts, lower-case class) → every name and object
+    /// reference in it, or null when the class isn't one it knows (then the copy stops, as before).
+    /// </summary>
+    public static Func<Package, byte[], int, string, List<NativeRef>?>? NativeHook { get; set; }
+
     static List<Patch> Parse(Package pkg, byte[] d, string cls)
     {
         string c = cls.ToLowerInvariant();
         bool component = c.EndsWith("component");
-        if (component && c != "staticmeshcomponent") throw new InvalidDataException($"component class '{cls}' not supported");
+        // MHO's MarvelEntityCompSounds (a costume's voice set): TemplateOwnerClass (object, 4), TemplateName (name, 8),
+        // NetIndex (4), then properties (checked on Miles Morales' and She-Hulk's, 2026-09-29).
+        bool templated = c == "marvelentitycompsounds";
+        if (component && c != "staticmeshcomponent" && !templated) throw new InvalidDataException($"component class '{cls}' not supported");
         var list = new List<Patch>();
+        if (templated)
+        {
+            list.Add(new Patch(0, Kind.Object, "templateownerclass"));
+            list.Add(new Patch(4, Kind.Name, "templatename"));
+            int q = Tags(pkg, d, 16, d.Length, "", list);
+            if (q != d.Length) throw new InvalidDataException($"{d.Length - q} bytes after the voice set's properties (none expected)");
+            return list;
+        }
         // MHO components: an extra int32, then NetIndex, then properties (byte 8); everything else from byte 4.
         int p = Tags(pkg, d, component ? 8 : 4, d.Length, "", list);
         if (c is "package" or "materialfunction" || c.StartsWith("materialexpression"))
@@ -321,6 +376,9 @@ static class ExportCopy
         }
         else if (c == "staticmesh") MeshNative(pkg, d, p, list);
         else if (c == "texturecube") { if (d.Length - p != 16) throw new InvalidDataException("texture cube native data isn't the empty 16-byte source-art header"); }
+        else if (NativeHook?.Invoke(pkg, d, p, c) is { } extra)
+            list.AddRange(extra.Select(x => new Patch(x.Offset, x.IsName ? Kind.Name : Kind.Object, x.Where)));
+        else if (p == d.Length) { }                                 // properties only (e.g. a SkeletalMeshSocket): nothing native to map
         else throw new InvalidDataException($"native layout of class '{cls}' unknown");
         return list;
     }
@@ -463,12 +521,15 @@ static class ExportCopy
         int q = p + 4;
         for (int i = 0; i < count && q > 0; i++) q = TryTags(pkg, d, q, end, $"{where}[{i}].", inner);
         if (q == end) { list.AddRange(inner); return; }
+        // Array of bytes / bools (1 byte each: can't hold a name or reference; SkeletalMesh LODInfo.bEnableShadowCasting).
+        if (size - 4 == count) return;
         // Array of strings (no references): each element an FString, together filling the array exactly.
         {
             int r = p + 4, i = 0;
             for (; i < count && r + 4 <= end; i++)
             {
                 int len = I32(d, r);
+                if (len > end - r || len < -(end - r) / 2) break;       // not a string length (e.g. an object array read as strings)
                 r += 4 + (len >= 0 ? len : -2 * len);
                 if (len == 0 || r > end) break;
             }

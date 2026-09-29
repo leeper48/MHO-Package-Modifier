@@ -152,7 +152,6 @@ static class PackageRebuilder
         foreach (string n in names)
         {
             if (pkg.Names.Any(x => x.Equals(n, StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException($"name '{n}' is already in the table");
-            if (n.Any(c => c > 127)) throw new InvalidDataException($"name '{n}' isn't ASCII");
         }
         // Flags of the last existing entry (the name table is FString + flags per entry).
         byte[] b = pkg.Body;
@@ -169,9 +168,20 @@ static class PackageRebuilder
         using var ms = new MemoryStream();
         foreach (string n in names)
         {
-            ms.Write(BitConverter.GetBytes(n.Length + 1));
-            ms.Write(System.Text.Encoding.ASCII.GetBytes(n));
-            ms.WriteByte(0);
+            if (n.Any(c => c > 127))
+            {
+                // UTF-16 FString (negative length), as UE3 stores non-ASCII names; seen copied from a mod's package
+                // ("lambertd⁭iffusepower" in Savage She-Hulk's materials).
+                ms.Write(BitConverter.GetBytes(-(n.Length + 1)));
+                ms.Write(System.Text.Encoding.Unicode.GetBytes(n));
+                ms.Write([0, 0]);
+            }
+            else
+            {
+                ms.Write(BitConverter.GetBytes(n.Length + 1));
+                ms.Write(System.Text.Encoding.ASCII.GetBytes(n));
+                ms.WriteByte(0);
+            }
             ms.Write(BitConverter.GetBytes(flags));
         }
         return ms.ToArray();
