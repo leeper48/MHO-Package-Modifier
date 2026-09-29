@@ -32,7 +32,8 @@ public sealed record NewImport(string ClassPackage, string ClassName, int OuterI
 static class PackageRebuilder
 {
     public static byte[] Rebuild(Package pkg, IReadOnlyDictionary<int, Func<long, byte[]>> replace, IReadOnlyList<NewExport> add,
-        out Dictionary<int, byte[]> writtenData, IReadOnlyList<string>? addNames = null, IReadOnlyList<NewImport>? addImports = null)
+        out Dictionary<int, byte[]> writtenData, IReadOnlyList<string>? addNames = null, IReadOnlyList<NewImport>? addImports = null,
+        IReadOnlyDictionary<int, string>? renames = null, IReadOnlyDictionary<int, int>? outers = null)
     {
         CheckLayout(pkg);
         byte[] body = pkg.Body;
@@ -49,6 +50,17 @@ static class PackageRebuilder
         // Export-table entries: existing ones copied, new ones cloned from their template with a new name number.
         var entries = new List<byte[]>();
         for (int i = 0; i < oldExports; i++) entries.Add(body.AsSpan(pkg.ExportEntryStart[i], pkg.ExportEntryEnd[i] - pkg.ExportEntryStart[i]).ToArray());
+        // Renamed exports (Mod Manager's costume move): only the entry's Name (index at byte 12, number at 16) changes; the
+        // name is an existing one or one of the added names. References are by index, so nothing else needs to follow.
+        foreach (var (i, name) in renames ?? new Dictionary<int, string>())
+        {
+            int idx = NameIndexFor(pkg, addNames ?? [], name);
+            BinaryPrimitives.WriteInt32LittleEndian(entries[i].AsSpan(12), idx);
+            BinaryPrimitives.WriteInt32LittleEndian(entries[i].AsSpan(16), 0);
+        }
+        // Moved exports (costume move: a group split): only the entry's Outer (byte 8) changes.
+        foreach (var (i, outer) in outers ?? new Dictionary<int, int>())
+            BinaryPrimitives.WriteInt32LittleEndian(entries[i].AsSpan(8), outer);
         foreach (var a in add)
         {
             if (a.Entry != null) { entries.Add(a.Entry.ToArray()); continue; }
@@ -119,6 +131,15 @@ static class PackageRebuilder
         BinaryPrimitives.WriteInt32LittleEndian(s[lastGen..], entries.Count);                  // generation ExportCount
         BinaryPrimitives.WriteInt32LittleEndian(s[(lastGen + 4)..], names);                    // generation NameCount
         return output;
+    }
+
+    static int NameIndexFor(Package pkg, IReadOnlyList<string> addNames, string name)
+    {
+        int i = Array.FindIndex(pkg.Names, n => n.Equals(name, StringComparison.OrdinalIgnoreCase));
+        if (i >= 0) return i;
+        int k = addNames.ToList().FindIndex(n => n.Equals(name, StringComparison.OrdinalIgnoreCase));
+        if (k < 0) throw new InvalidDataException($"name '{name}' is neither in the table nor added");
+        return pkg.Names.Length + k;
     }
 
     /// <summary>Where SerialSize sits in a v868 export entry: Class, Super, Outer (4 each), Name (8), Archetype (4), ObjectFlags (8).</summary>
@@ -212,7 +233,8 @@ static class PackageRebuilder
     /// kept, header size = first data offset. Returns problems (empty = pass).
     /// </summary>
     public static List<string> Verify(Package original, byte[] rebuilt, IReadOnlyCollection<int> replaced, IReadOnlyList<NewExport> add, IReadOnlyDictionary<int, byte[]> writtenData,
-        IReadOnlyList<string>? addNames = null, IReadOnlyList<NewImport>? addImports = null)
+        IReadOnlyList<string>? addNames = null, IReadOnlyList<NewImport>? addImports = null, IReadOnlyDictionary<int, string>? renames = null,
+        IReadOnlyDictionary<int, int>? outers = null)
     {
         var problems = new List<string>();
         void Check(bool ok, string what) { if (!ok) problems.Add(what); }
@@ -231,7 +253,11 @@ static class PackageRebuilder
         for (int i = 0; i < Math.Min(original.Exports.Length, w.Exports.Length); i++)
         {
             var a = original.Exports[i]; var b = w.Exports[i];
-            Check(a with { SerialSize = 0, SerialOffset = 0 } == b with { SerialSize = 0, SerialOffset = 0 }, $"export {i} entry changed");
+            if (renames != null && renames.TryGetValue(i, out var rn)) a = a with { ObjectName = rn };
+            if (outers != null && outers.TryGetValue(i, out int ou)) a = a with { OuterIndex = ou };
+            Check(a with { SerialSize = 0, SerialOffset = 0 } == b with { SerialSize = 0, SerialOffset = 0 } ||
+                  (a with { SerialSize = 0, SerialOffset = 0, ObjectName = "" } == b with { SerialSize = 0, SerialOffset = 0, ObjectName = "" } && a.ObjectName.Equals(b.ObjectName, StringComparison.OrdinalIgnoreCase)),
+                  $"export {i} entry changed");
             byte[] data = w.ReadExportBytes(b);
             if (replaced.Contains(i)) Check(data.AsSpan().SequenceEqual(writtenData[i]), $"replaced export {i} not as built");
             else if (!data.AsSpan().SequenceEqual(original.ReadExportBytes(a))) different++;
