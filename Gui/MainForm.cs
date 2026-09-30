@@ -246,6 +246,7 @@ sealed partial class MainForm : Form
         // Double-click (or Enter) on a row = "Edit properties →".
         exports.ItemActivate += (_, _) => { if (SelectedExport() is int i) { LoadProperties(i); tabs.SelectedTab = propertiesPage; } };
         classFilter.TextChanged += (_, _) => FillExports();
+        SearchBox.AddClear(classFilter);
 
         var buttons = Flow(
             Btn("Edit Properties →", () => { if (SelectedExport() is int i) { LoadProperties(i); tabs.SelectedTab = propertiesPage; } }),
@@ -317,6 +318,7 @@ sealed partial class MainForm : Form
         also.Controls.Add(alsoStatus, 1, 2);
         alsoStatus.Text = AlsoHint;
         alsoFilter.TextChanged += (_, _) => FillAlsoList();
+        SearchBox.AddClear(alsoFilter);
         alsoList.ItemCheck += (_, e) =>
         {
             if (alsoList.Items[e.Index] is AlsoItem it) it.Checked = e.NewValue == CheckState.Checked;

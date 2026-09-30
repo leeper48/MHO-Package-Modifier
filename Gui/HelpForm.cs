@@ -68,6 +68,7 @@ sealed class HelpForm : Form
         bar.Controls.Add(found);
         search.KeyDown += (_, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; Find(e.Shift ? -1 : +1); } };
         search.TextChanged += (_, _) => { searched = ""; found.Text = ""; };
+        SearchBox.AddClear(search);
         KeyPreview = true;
         KeyDown += (_, e) => { if (e.Control && e.KeyCode == Keys.F) { e.Handled = true; search.Focus(); search.SelectAll(); } };
         browser.DocumentCompleted += (_, _) => { searched = ""; found.Text = ""; };
