@@ -161,7 +161,10 @@ static class MeshImport
     /// Creates the missing .bak from a known-original copy (e.g. a stock-checksum-verified one) instead of from the live
     /// file, which may already be modded. Never touches an existing .bak. Written to a temp file, verified, then renamed.
     /// </summary>
-    public static bool CreateBak(string upkPath, byte[] original)
+    /// <param name="stockDated">The original is verified stock (the caller checked its CRC): the .bak gets the game's stock
+    /// date (2024-03-14), as a copy of the untouched file would have (MHModManager's backups kept it; a written file was
+    /// dated today and looked modified).</param>
+    public static bool CreateBak(string upkPath, byte[] original, bool stockDated = false)
     {
         string bak = upkPath + ".bak";
         if (File.Exists(bak)) return true;
@@ -169,8 +172,16 @@ static class MeshImport
         File.WriteAllBytes(temp, original);
         if (!SameHash(File.ReadAllBytes(temp), original)) { File.Delete(temp); Console.WriteLine($"  {Path.GetFileName(bak)}: temp copy didn't read back identically; not created."); return false; }
         File.Move(temp, bak, overwrite: false);
+        if (stockDated) SetStockDate(bak);
         Console.WriteLine($"  backup: created {Path.GetFileName(bak)} from the verified original");
         return true;
+    }
+
+    /// <summary>Gives a file the game's stock date (2024-03-14), for a file whose content is verified stock.</summary>
+    public static void SetStockDate(string path)
+    {
+        try { File.SetLastWriteTime(path, StockDate); File.SetCreationTime(path, StockDate); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
     }
 
     public static int Revert(string upkPath)
