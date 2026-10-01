@@ -25,7 +25,9 @@ static class ExportCopy
     static readonly HashSet<string> PlainStructs = new(StringComparer.OrdinalIgnoreCase)
         { "vector", "vector2d", "vector4", "guid", "color", "linearcolor", "rotator", "box", "matrix", "plane", "quat", "intpoint", "sphere", "twovectors" };
     /// <summary>Array properties known to hold object references (4 bytes each).</summary>
-    static readonly HashSet<string> ObjectArrays = new(StringComparer.OrdinalIgnoreCase) { "expressions", "functionexpressions", "staticmeshcomponents", "materials", "sockets", "clothingassets", "audioemotes", "bantertargets" };   // SkeletalMesh: its sockets and clothing assets (checked with --dump-export)
+    /// <summary>Arrays of plain numbers (APEX cloth's per-LOD maps; an ApexClothingAsset's per-LOD material index lists).</summary>
+    static readonly HashSet<string> NumberArrays = new(StringComparer.OrdinalIgnoreCase) { "clothingsectioninfo", "lodmaterialmap", "clothtographicsvertmap", "clothmovementscale", "clothweldingmap", "clothweldedindices", "boundsbodies" };
+    static readonly HashSet<string> ObjectArrays = new(StringComparer.OrdinalIgnoreCase) { "expressions", "functionexpressions", "staticmeshcomponents", "materials", "sockets", "clothingassets", "audioemotes", "bantertargets", "bodysetup", "constraintsetup", "bodies", "constraints" };   // SkeletalMesh: its sockets and clothing assets; PhysicsAsset: bodysetup / constraintsetup; PhysicsAssetInstance: bodies / constraints (checked with --dump-export)
 
     public static int Run(string srcPath, string exportName, string dstPath, IReadOnlyCollection<string> cut, bool dryRun,
         string? rename = null, IReadOnlyDictionary<string, string>? replaceRefs = null)
@@ -138,24 +140,45 @@ static class ExportCopy
         queue.Enqueue(root);
         foreach (int extra in alsoCopy ?? []) queue.Enqueue(extra);   // more roots in the same pass (e.g. a costume's sound events)
         int cutRefs = 0;
+        // MHO_COPY_TRACE=1: who led the copy to each export (for a "can't copy …" deep in the closure).
+        bool trace = Environment.GetEnvironmentVariable("MHO_COPY_TRACE") == "1";
+        var via = new Dictionary<int, string>();
+        void Note(int child, int parent, string how) { if (trace) via.TryAdd(child, $"{src.PathOf(src.Exports[parent])} ({how})"); }
+        int current = root;   // the export being parsed (for the trace)
         void EnqueueImportOuters(int r)
         {
+            int start = r;
             for (int guard = 0; r < 0 && guard < 32; guard++)
             {
                 r = src.Imports[-r - 1].OuterIndex;
-                if (r > 0) queue.Enqueue(r - 1);
+                if (r > 0) { Note(r - 1, current, $"outer of import {src.RefName(start)}"); queue.Enqueue(r - 1); }
             }
         }
         while (queue.Count > 0)
         {
             int i = queue.Dequeue();
             if (patches.ContainsKey(i) || reusedEarly.Contains(i)) continue;
+            current = i;
             var e = src.Exports[i];
             if (i != root && dstByPath.ContainsKey(Expect(dst, i + 1))) { reusedEarly.Add(i); order.Add(i); continue; }
             List<Patch> list;
             try { list = Parse(src, src.ReadExportBytes(e), src.ClassOf(e)); }
             catch (Exception ex) when (ex is InvalidDataException or PackageFormatException or ArgumentOutOfRangeException)
-            { Console.WriteLine($"  can't copy {src.PathOf(e)} ({src.ClassOf(e)}): {ex.Message}"); return null; }
+            {
+                Console.WriteLine($"  can't copy {src.PathOf(e)} ({src.ClassOf(e)}): {ex.Message}");
+                if (trace)
+                {
+                    var seen = new HashSet<int> { i };
+                    for (int k = i, guard = 0; via.TryGetValue(k, out var from) && guard < 40; guard++)
+                    {
+                        Console.WriteLine($"    reached from {from}");
+                        int next = Array.FindIndex(src.Exports, x => src.PathOf(x) == from[..from.LastIndexOf(" (")]);
+                        if (next < 0 || !seen.Add(next)) break;
+                        k = next;
+                    }
+                }
+                return null;
+            }
             patches[i] = list;
             order.Add(i);
             byte[] d = src.ReadExportBytes(e);
@@ -164,14 +187,14 @@ static class ExportCopy
                 int r = BinaryPrimitives.ReadInt32LittleEndian(d.AsSpan(pt.Offset));
                 if (IsCut(pt.Where, cut)) { if (r != 0) cutRefs++; continue; }
                 if (replaced.ContainsKey(r)) continue;
-                if (r > 0) queue.Enqueue(r - 1);
+                if (r > 0) { Note(r - 1, i, pt.Where); queue.Enqueue(r - 1); }
                 else EnqueueImportOuters(r);
             }
             var (cls, super, outer, arch) = EntryRefs(src, i);
             if (cls > 0) { Console.WriteLine($"  {src.PathOf(e)}: its class is defined in the package; not supported"); return null; }
             if (super != 0) { Console.WriteLine($"  {src.PathOf(e)}: has a SuperIndex (a class/struct); not supported"); return null; }
-            if (outer > 0 && !replaced.ContainsKey(outer)) queue.Enqueue(outer - 1);   // an outer pointed at a target object isn't copied
-            if (arch > 0) queue.Enqueue(arch - 1);
+            if (outer > 0 && !replaced.ContainsKey(outer)) { Note(outer - 1, i, "its outer"); queue.Enqueue(outer - 1); }   // an outer pointed at a target object isn't copied
+            if (arch > 0) { Note(arch - 1, i, "its archetype"); queue.Enqueue(arch - 1); }
             else EnqueueImportOuters(arch);   // an imported archetype's outer can be an export (a component template: marvelgamecontent)
             EnqueueImportOuters(cls);
         }
@@ -376,6 +399,29 @@ static class ExportCopy
         }
         else if (c == "staticmesh") MeshNative(pkg, d, p, list);
         else if (c == "texturecube") { if (d.Length - p != 16) throw new InvalidDataException("texture cube native data isn't the empty 16-byte source-art header"); }
+        // APEX cloth (a cape's ApexClothingAsset): a few properties, then APEX's own serialized asset (NxParameterized binary:
+        // bone names as text, no package names or references), copied as it is (MHO Hero Creator's finding).
+        else if (c == "apexclothingasset") { }
+        // A physics body (RB_BodySetup): PreCachedPhysData = count of cooked convex sets, each a count of byte arrays (no names
+        // or references; empty for boxes / spheres / capsules). Checked to end exactly (Doctor Strange's 15 bodies, 2026-09-30).
+        // A physics asset's instance: CollisionDisableTable = count, then (body index, body index, UBOOL) per pair (12 bytes).
+        else if (c == "physicsassetinstance")
+        {
+            int n = I32(d, p);
+            if (n < 0 || d.Length - p != 4 + 12 * n) throw new InvalidDataException($"physics asset instance: {n} disabled pairs don't fill its {d.Length - p} bytes");
+        }
+        else if (c == "rb_bodysetup")
+        {
+            int q = p, sets = I32(d, q); q += 4;
+            if (sets < 0 || sets > 64) throw new InvalidDataException($"body setup: {sets} cooked convex sets");
+            for (int k = 0; k < sets; k++)
+            {
+                int n = I32(d, q); q += 4;
+                if (n < 0 || n > 4096) throw new InvalidDataException($"body setup: {n} convex elements");
+                for (int j = 0; j < n; j++) { int len = I32(d, q); if (len < 0 || len > d.Length - q - 4) throw new InvalidDataException("body setup: bad convex data"); q += 4 + len; }
+            }
+            if (q != d.Length) throw new InvalidDataException($"body setup: native data doesn't end where expected ({d.Length - q} bytes left)");
+        }
         else if (NativeHook?.Invoke(pkg, d, p, c) is { } extra)
             list.AddRange(extra.Select(x => new Patch(x.Offset, x.IsName ? Kind.Name : Kind.Object, x.Where)));
         else if (p == d.Length) { }                                 // properties only (e.g. a SkeletalMeshSocket): nothing native to map
@@ -535,12 +581,33 @@ static class ExportCopy
             }
             if (i == count && r == end) return;
         }
-        if (ObjectArrays.Contains(where.Split('.', '[').Last()) && size - 4 == count * 4)
+        // Cloth data (APEX's maps: which render vertices a cloth vertex drives, per LOD; the older UE3 cloth's buffers, e.g.
+        // Thor's hammer tassel): vertex and index numbers only, no names or references. From the MHO Hero Creator's copier
+        // (Kurt, 2026-09-30: port APEX cloth so costumes with capes can move to other heroes).
+        string arrayName = where.Split('.', '[').Last();
+        // Only named arrays: ApexClothingAsset.lodmaterialinfo is an array of tagged structs holding names, and listing it as
+        // numbers (2.53.7) left those names unmapped: the game read the cape's data out of step and crashed on load ("Bad Name
+        // Index", Doctor Strange on Colossus, 2026-09-30). Its items are { lodmaterialmap: array of int }, parsed above.
+        if (NumberArrays.Contains(arrayName))
+        {
+            // Never numbers when the first element reads as a property tag (name, then a *property type name): that's a
+            // struct whose tags didn't parse, and copying it as is leaves its names unmapped (2.53.7 / 2.53.8 crashes).
+            if (size - 4 >= 24 && LooksLikeTag(pkg, d, p + 4)) throw new InvalidDataException($"{where}: tagged structs that don't parse");
+            return;
+        }
+        if (ObjectArrays.Contains(arrayName) && size - 4 == count * 4)
         {
             for (int i = 0; i < count; i++) list.Add(new Patch(p + 4 + 4 * i, Kind.Object, $"{where}[{i}]"));
             return;
         }
         throw new InvalidDataException($"{where}: array of {count} with unknown element type ({size - 4} bytes)");
+    }
+
+    static bool LooksLikeTag(Package pkg, byte[] d, int p)
+    {
+        int n = I32(d, p), t = I32(d, p + 8);
+        return n >= 0 && n < pkg.Names.Length && I32(d, p + 4) == 0 && t >= 0 && t < pkg.Names.Length && I32(d, p + 12) == 0
+            && pkg.Names[t].EndsWith("property", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>Material / MaterialInstanceConstant native data (layout in the class summary).</summary>

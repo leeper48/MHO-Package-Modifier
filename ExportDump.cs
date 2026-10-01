@@ -67,7 +67,15 @@ static class ExportDump
             var second = new StringBuilder();
             int at8 = WalkProperties(pkg, data, second, 8);
             if (at8 >= 0) { sb.AppendLine("(component layout: int32 + NetIndex, properties from byte 8)"); sb.Append(second); nativeStart = at8; }
-            else sb.Append(first);
+            else
+            {
+                // Character components (MarvelPlayer default's SkeletalMeshComponent, MarvelEntityComp*): owner ref, template
+                // name (8), NetIndex, then properties from byte 16.
+                var third = new StringBuilder();
+                int at16 = data.Length > 16 ? WalkProperties(pkg, data, third, 16) : -1;
+                if (at16 >= 0) { sb.AppendLine("(component layout: owner, template name, NetIndex; properties from byte 16)"); sb.Append(third); nativeStart = at16; }
+                else sb.Append(first);
+            }
         }
         else sb.Append(first);
 
