@@ -127,6 +127,9 @@ static class MeshImport
     /// </param>
     public static bool WriteLive(string upkPath, byte[] packageBytes, Func<byte[], List<string>> verifyFromDisk, bool bakBeside = true)
     {
+        // Only files the game already has are ever changed: nothing new is added to a game install (Kurt, 2026-09-30:
+        // nothing public may change what a stock server install expects).
+        if (!File.Exists(upkPath)) { Console.WriteLine($"  {Path.GetFileName(upkPath)} isn't an existing game file; nothing is added to the game, so nothing was written."); return false; }
         if (Locked(upkPath)) return false;
         string bak = upkPath + ".bak";
         if (!bakBeside) Console.WriteLine("  backup: the original is kept outside the game folder by the caller");
