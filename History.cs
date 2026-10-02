@@ -69,6 +69,23 @@ static class History
     static string Snap(string dir, Entry e) => Path.Combine(dir, $"{e.Id:D5}.upk");
 
     /// <summary>
+    /// Is the live file exactly what this tool last left there: its most recent recorded write, or (after an undo) the
+    /// version that undo put back? False when there's no history for it, or something else changed it since (another
+    /// program, a hand edit). The MHO Extended Mod Manager uses this to leave other programs' files alone.
+    /// </summary>
+    public static bool IsLastWritten(string upkPath)
+    {
+        try
+        {
+            if (!File.Exists(upkPath)) return false;
+            var (undo, redo) = Load(Folder(upkPath));
+            string? expected = redo.Count > 0 ? redo[^1].Before : undo.Count > 0 ? undo[^1].After : null;
+            return expected != null && expected.Equals(Hash(File.ReadAllBytes(upkPath)), StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or FormatException) { return false; }
+    }
+
+    /// <summary>
     /// Called just before the live file is replaced with `after`: snapshots the current live file (the undo point) and
     /// clears the redo list. Never stops a write: a snapshot failure is reported and the write goes ahead.
     /// </summary>
