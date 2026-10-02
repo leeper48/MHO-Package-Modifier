@@ -26,8 +26,11 @@ static class ExportCopy
         { "vector", "vector2d", "vector4", "guid", "color", "linearcolor", "rotator", "box", "matrix", "plane", "quat", "intpoint", "sphere", "twovectors" };
     /// <summary>Array properties known to hold object references (4 bytes each).</summary>
     /// <summary>Arrays of plain numbers (APEX cloth's per-LOD maps; an ApexClothingAsset's per-LOD material index lists).</summary>
-    static readonly HashSet<string> NumberArrays = new(StringComparer.OrdinalIgnoreCase) { "clothingsectioninfo", "lodmaterialmap", "clothtographicsvertmap", "clothmovementscale", "clothweldingmap", "clothweldedindices", "boundsbodies" };
-    static readonly HashSet<string> ObjectArrays = new(StringComparer.OrdinalIgnoreCase) { "expressions", "functionexpressions", "staticmeshcomponents", "materials", "sockets", "clothingassets", "audioemotes", "bantertargets", "bodysetup", "constraintsetup", "bodies", "constraints" };   // SkeletalMesh: its sockets and clothing assets; PhysicsAsset: bodysetup / constraintsetup; PhysicsAssetInstance: bodies / constraints (checked with --dump-export)
+    /// <summary>Arrays of names (8 bytes each): an AnimSet's bones (TrackBoneNames: the order of every sequence's tracks) and
+    /// the bones that take positions in a rotation-only set (UseTranslationBoneNames, ForceMeshTranslationBoneNames).</summary>
+    static readonly HashSet<string> NameArrays = new(StringComparer.OrdinalIgnoreCase) { "trackbonenames", "usetranslationbonenames", "forcemeshtranslationbonenames" };
+    static readonly HashSet<string> NumberArrays = new(StringComparer.OrdinalIgnoreCase) { "clothingsectioninfo", "lodmaterialmap", "clothtographicsvertmap", "clothmovementscale", "clothweldingmap", "clothweldedindices", "boundsbodies", "compressedtrackoffsets" };   // AnimSequence: per track, offset and key count of translation and rotation
+    static readonly HashSet<string> ObjectArrays = new(StringComparer.OrdinalIgnoreCase) { "expressions", "functionexpressions", "staticmeshcomponents", "materials", "sockets", "clothingassets", "audioemotes", "bantertargets", "bodysetup", "constraintsetup", "bodies", "constraints", "sequences" };   // AnimSet: its AnimSequences   // SkeletalMesh: its sockets and clothing assets; PhysicsAsset: bodysetup / constraintsetup; PhysicsAssetInstance: bodies / constraints (checked with --dump-export)
 
     public static int Run(string srcPath, string exportName, string dstPath, IReadOnlyCollection<string> cut, bool dryRun,
         string? rename = null, IReadOnlyDictionary<string, string>? replaceRefs = null)
@@ -402,6 +405,25 @@ static class ExportCopy
         // APEX cloth (a cape's ApexClothingAsset): a few properties, then APEX's own serialized asset (NxParameterized binary:
         // bone names as text, no package names or references), copied as it is (MHO Hero Creator's finding).
         else if (c == "apexclothingasset") { }
+        // An animation (AnimSequence): after its properties the raw tracks (count; per track a count of 12-byte positions and a
+        // count of 16-byte rotations; empty once compressed) and the compressed key stream (count, bytes): numbers only, as
+        // AnimExportCli's reader reads them. Checked to end exactly (Mod Manager's animation swap, 2026-10-02).
+        else if (c == "animsequence")
+        {
+            int q = p, tracks = I32(d, q); q += 4;
+            if (tracks < 0 || tracks > 4096) throw new InvalidDataException($"animation: {tracks} raw tracks");
+            for (int k = 0; k < tracks; k++)
+            {
+                int pos = I32(d, q); q += 4;
+                if (pos < 0 || (long)pos * 12 > d.Length - q) throw new InvalidDataException("animation: bad raw positions");
+                q += pos * 12;
+                int rot = I32(d, q); q += 4;
+                if (rot < 0 || (long)rot * 16 > d.Length - q) throw new InvalidDataException("animation: bad raw rotations");
+                q += rot * 16;
+            }
+            int bytes = I32(d, q); q += 4;
+            if (bytes < 0 || q + bytes != d.Length) throw new InvalidDataException($"animation: the compressed keys don't end where the data does ({d.Length - q - bytes} bytes left)");
+        }
         // A physics body (RB_BodySetup): PreCachedPhysData = count of cooked convex sets, each a count of byte arrays (no names
         // or references; empty for boxes / spheres / capsules). Checked to end exactly (Doctor Strange's 15 bodies, 2026-09-30).
         // A physics asset's instance: CollisionDisableTable = count, then (body index, body index, UBOOL) per pair (12 bytes).
@@ -593,6 +615,11 @@ static class ExportCopy
             // Never numbers when the first element reads as a property tag (name, then a *property type name): that's a
             // struct whose tags didn't parse, and copying it as is leaves its names unmapped (2.53.7 / 2.53.8 crashes).
             if (size - 4 >= 24 && LooksLikeTag(pkg, d, p + 4)) throw new InvalidDataException($"{where}: tagged structs that don't parse");
+            return;
+        }
+        if (NameArrays.Contains(arrayName) && size - 4 == count * 8)
+        {
+            for (int i = 0; i < count; i++) list.Add(new Patch(p + 4 + 8 * i, Kind.Name, $"{where}[{i}]"));
             return;
         }
         if (ObjectArrays.Contains(arrayName) && size - 4 == count * 4)
