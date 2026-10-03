@@ -29,12 +29,14 @@ static class ExportCopy
     /// <summary>Arrays of names (8 bytes each): an AnimSet's bones (TrackBoneNames: the order of every sequence's tracks) and
     /// the bones that take positions in a rotation-only set (UseTranslationBoneNames, ForceMeshTranslationBoneNames); an
     /// AnimSequence's AnimMetaData_SkelControl: the skeletal controls it drives (Thor's animsequence_31: 2 names).</summary>
-    static readonly HashSet<string> NameArrays = new(StringComparer.OrdinalIgnoreCase) { "trackbonenames", "usetranslationbonenames", "forcemeshtranslationbonenames", "skelcontrolnamelist" };
-    static readonly HashSet<string> NumberArrays = new(StringComparer.OrdinalIgnoreCase) { "clothingsectioninfo", "lodmaterialmap", "clothtographicsvertmap", "clothmovementscale", "clothweldingmap", "clothweldedindices", "boundsbodies", "compressedtrackoffsets" };   // AnimSequence: per track, offset and key count of translation and rotation
+    static readonly HashSet<string> NameArrays = new(StringComparer.OrdinalIgnoreCase) { "trackbonenames", "usetranslationbonenames", "forcemeshtranslationbonenames", "skelcontrolnamelist", "materialparameters" };
+    static readonly HashSet<string> NumberArrays = new(StringComparer.OrdinalIgnoreCase) { "clothingsectioninfo", "lodmaterialmap", "clothtographicsvertmap", "clothmovementscale", "clothweldingmap", "clothweldedindices", "boundsbodies", "compressedtrackoffsets",   // AnimSequence: per track, offset and key count of translation and rotation
+        "vertexdata", "permutedvertexdata", "facetridata", "edgedirections", "facenormaldirections", "faceplanedata",   // a body setup's convex hulls (agggeom.convexelems: vectors, planes, ints; Hulk's asteroid, 2026-10-03)
+        "precachedphysscale", "randomseeds" };   // a body setup's cooked scales (vectors); a *_seeded particle module's seeds (ints)
     /// <summary>Arrays of floats (4 bytes each, nothing else): an AnimSequence's morph-target curves (curvedata: tagged structs
     /// { curvename, curveweights }) hold one weight per frame (Carnage's arm blades: 49 frames, 49 floats; checked 2026-10-03).</summary>
-    static readonly HashSet<string> FloatArrays = new(StringComparer.OrdinalIgnoreCase) { "curveweights" };
-    static readonly HashSet<string> ObjectArrays = new(StringComparer.OrdinalIgnoreCase) { "expressions", "functionexpressions", "staticmeshcomponents", "materials", "sockets", "clothingassets", "audioemotes", "bantertargets", "bodysetup", "constraintsetup", "bodies", "constraints", "sequences", "metadata" };   // AnimSet: its AnimSequences; AnimSequence: its AnimMetaData objects   // SkeletalMesh: its sockets and clothing assets; PhysicsAsset: bodysetup / constraintsetup; PhysicsAssetInstance: bodies / constraints (checked with --dump-export)
+    static readonly HashSet<string> FloatArrays = new(StringComparer.OrdinalIgnoreCase) { "curveweights", "loddistances", "lookuptable" };
+    static readonly HashSet<string> ObjectArrays = new(StringComparer.OrdinalIgnoreCase) { "expressions", "functionexpressions", "staticmeshcomponents", "materials", "sockets", "clothingassets", "audioemotes", "bantertargets", "bodysetup", "constraintsetup", "bodies", "constraints", "sequences", "metadata", "emitters", "lodlevels", "modules", "spawnmodules", "updatemodules", "meshmaterials", "defaultmaterials", "particlemoduleeventstosendtogame" };   // AnimSet: its AnimSequences; AnimSequence: its AnimMetaData objects   // SkeletalMesh: its sockets and clothing assets; PhysicsAsset: bodysetup / constraintsetup; PhysicsAssetInstance: bodies / constraints (checked with --dump-export)
 
     public static int Run(string srcPath, string exportName, string dstPath, IReadOnlyCollection<string> cut, bool dryRun,
         string? rename = null, IReadOnlyDictionary<string, string>? replaceRefs = null)
@@ -243,15 +245,19 @@ static class ExportCopy
             if (k < 0)
             {
                 int added = addImports.FindIndex(x => x.OuterIndex == outer && x.ClassName.Equals(im.ClassName, StringComparison.OrdinalIgnoreCase)
-                    && x.ObjectName.Equals(im.ObjectName, StringComparison.OrdinalIgnoreCase));
+                    && x.FullName.Equals(im.ObjectName, StringComparison.OrdinalIgnoreCase));
                 if (added < 0)
                 {
                     var raw = src.Body.AsSpan(src.ImportOffset + 28 * (-r - 1));
                     string classPackage = src.Names[BinaryPrimitives.ReadInt32LittleEndian(raw)];
-                    if (BinaryPrimitives.ReadInt32LittleEndian(raw[4..]) != 0 || BinaryPrimitives.ReadInt32LittleEndian(raw[12..]) != 0 || BinaryPrimitives.ReadInt32LittleEndian(raw[24..]) != 0)
-                        throw new InvalidDataException($"import {im.ObjectName}: numbered names not supported");
-                    foreach (string n in new[] { classPackage, im.ClassName, im.ObjectName }) EnsureName(n);
-                    addImports.Add(new NewImport(classPackage, im.ClassName, outer, im.ObjectName));
+                    // The object's name may carry a number (another package's particlespriteemitter_8, mat_tendril_distort_1); the
+                    // class package and class names never do in the stock files.
+                    if (BinaryPrimitives.ReadInt32LittleEndian(raw[4..]) != 0 || BinaryPrimitives.ReadInt32LittleEndian(raw[12..]) != 0)
+                        throw new InvalidDataException($"import {im.ObjectName}: numbered class names not supported");
+                    string objectName = src.Names[BinaryPrimitives.ReadInt32LittleEndian(raw[20..])];
+                    int objectNumber = BinaryPrimitives.ReadInt32LittleEndian(raw[24..]);
+                    foreach (string n in new[] { classPackage, im.ClassName, objectName }) EnsureName(n);
+                    addImports.Add(new NewImport(classPackage, im.ClassName, outer, objectName, objectNumber));
                     added = addImports.Count - 1;
                 }
                 k = dst.Imports.Length + added;
@@ -371,11 +377,15 @@ static class ExportCopy
     static List<Patch> Parse(Package pkg, byte[] d, string cls)
     {
         string c = cls.ToLowerInvariant();
-        bool component = c.EndsWith("component");
+        // Distributions (DistributionFloatUniform …, a particle module's curves when not baked to a lookup table) are components
+        // in UE3, with the same header as MHO's other components (int32 0, NetIndex, properties from byte 8; checked on Doctor
+        // Strange's particle systems, 2026-10-03).
+        bool distribution = c.StartsWith("distribution");
+        bool component = c.EndsWith("component") || distribution;
         // MHO's MarvelEntityCompSounds (a costume's voice set): TemplateOwnerClass (object, 4), TemplateName (name, 8),
         // NetIndex (4), then properties (checked on Miles Morales' and She-Hulk's, 2026-09-29).
         bool templated = c == "marvelentitycompsounds";
-        if (component && c != "staticmeshcomponent" && !templated) throw new InvalidDataException($"component class '{cls}' not supported");
+        if (component && c != "staticmeshcomponent" && !templated && !distribution) throw new InvalidDataException($"component class '{cls}' not supported");
         var list = new List<Patch>();
         if (templated)
         {
@@ -386,14 +396,17 @@ static class ExportCopy
             return list;
         }
         // MHO components: an extra int32, then NetIndex, then properties (byte 8); everything else from byte 4.
+        if (distribution && I32(d, 0) != 0) throw new InvalidDataException("a template distribution (owner class set) isn't supported");
         int p = Tags(pkg, d, component ? 8 : 4, d.Length, "", list);
         if (c is "package" or "materialfunction" || c.StartsWith("materialexpression"))
         {
             if (p != d.Length) throw new InvalidDataException($"{d.Length - p} bytes of native data (none expected)");
         }
-        else if (c == "material") MaterialNative(pkg, d, p, false, list);
+        // DecalMaterial and TextureFlipBook add no native data of their own (UE3 subclasses of Material / Texture2D; the layouts
+        // check out on the power packages' decals and flipbooks, 2026-10-03).
+        else if (c is "material" or "decalmaterial") MaterialNative(pkg, d, p, false, list);
         else if (c == "materialinstanceconstant") { if (p != d.Length) MaterialNative(pkg, d, p, true, list); }
-        else if (c == "texture2d") TextureMips(d, p, list);
+        else if (c is "texture2d" or "textureflipbook") TextureMips(d, p, list);
         else if (c == "staticmeshcollectionactor")
         {
             if (p != d.Length) throw new InvalidDataException($"{d.Length - p} bytes of native data (none expected)");
@@ -428,7 +441,7 @@ static class ExportCopy
             int bytes = I32(d, q); q += 4;
             if (bytes < 0 || q + bytes != d.Length) throw new InvalidDataException($"animation: the compressed keys don't end where the data does ({d.Length - q - bytes} bytes left)");
         }
-        // A physics body (RB_BodySetup): PreCachedPhysData = count of cooked convex sets, each a count of byte arrays (no names
+        // A physics body (RB_BodySetup): PreCachedPhysData = count of cooked convex sets, each a count of bulk byte arrays (no names
         // or references; empty for boxes / spheres / capsules). Checked to end exactly (Doctor Strange's 15 bodies, 2026-09-30).
         // A physics asset's instance: CollisionDisableTable = count, then (body index, body index, UBOOL) per pair (12 bytes).
         else if (c == "physicsassetinstance")
@@ -444,7 +457,14 @@ static class ExportCopy
             {
                 int n = I32(d, q); q += 4;
                 if (n < 0 || n > 4096) throw new InvalidDataException($"body setup: {n} convex elements");
-                for (int j = 0; j < n; j++) { int len = I32(d, q); if (len < 0 || len > d.Length - q - 4) throw new InvalidDataException("body setup: bad convex data"); q += 4 + len; }
+                // Each element's cooked hull (PhysX "NXS CVXM") is a bulk-serialized byte array: element size 1, count, bytes
+                // (a barrel's piece in UC__PowerUltron_DroneExplode_SF, 2026-10-03; Doctor Strange's bodies had no hulls).
+                for (int j = 0; j < n; j++)
+                {
+                    int elem = I32(d, q), len = I32(d, q + 4);
+                    if (elem != 1 || len < 0 || len > d.Length - q - 8) throw new InvalidDataException("body setup: bad convex data");
+                    q += 8 + len;
+                }
             }
             if (q != d.Length) throw new InvalidDataException($"body setup: native data doesn't end where expected ({d.Length - q} bytes left)");
         }

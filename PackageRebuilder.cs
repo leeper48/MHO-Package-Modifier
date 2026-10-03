@@ -17,7 +17,13 @@ public sealed record NewExport(int TemplateIndex, int NameNumber, Func<long, byt
 /// OuterIndex uses package references: 0 = none, -(k+1) = import k (a new import may point at an earlier new one),
 /// k+1 = export k (seen in stock packages: imports inside a forced-export package, e.g. a cubemap from MarvelGame.upk).
 /// </summary>
-public sealed record NewImport(string ClassPackage, string ClassName, int OuterIndex, string ObjectName);
+/// <summary>A new import. <paramref name="ObjectNumber"/> is the FName number of the object's name (0 = none; n = "_n-1" appended:
+/// a copied particle system imports another package's particlespriteemitter_8 as name particlespriteemitter, number 9).</summary>
+public sealed record NewImport(string ClassPackage, string ClassName, int OuterIndex, string ObjectName, int ObjectNumber = 0)
+{
+    /// <summary>The object name as Package reads it (with the number's suffix).</summary>
+    public string FullName => ObjectNumber > 0 ? $"{ObjectName}_{ObjectNumber - 1}" : ObjectName;
+}
 
 /// <summary>
 /// Rewrites a whole package, uncompressed, so exports can be added (PackageWriter can only replace one).
@@ -204,7 +210,7 @@ static class PackageRebuilder
         {
             var im = imports[k];
             if (im.OuterIndex > exportCount || -im.OuterIndex > pkg.Imports.Length + k) throw new InvalidDataException($"import '{im.ObjectName}': outer {im.OuterIndex} isn't an earlier import or an export");
-            foreach (int v in new[] { NameIndex(im.ClassPackage), 0, NameIndex(im.ClassName), 0, im.OuterIndex, NameIndex(im.ObjectName), 0 })
+            foreach (int v in new[] { NameIndex(im.ClassPackage), 0, NameIndex(im.ClassName), 0, im.OuterIndex, NameIndex(im.ObjectName), im.ObjectNumber })
                 ms.Write(BitConverter.GetBytes(v));
         }
         return ms.ToArray();
@@ -255,7 +261,7 @@ static class PackageRebuilder
         Check(w.Chunks.Count == 0 && w.CompressionFlags == 0, "not uncompressed");
         Check(w.SummaryEnd == w.NameOffset, "summary doesn't end at the name table");
         Check(w.Names.SequenceEqual(original.Names.Concat(addNames ?? [])), "name table isn't the original plus the added names");
-        Check(w.Imports.SequenceEqual(original.Imports.Concat((addImports ?? []).Select(i => new ImportEntry(i.ClassName, i.OuterIndex, i.ObjectName))),
+        Check(w.Imports.SequenceEqual(original.Imports.Concat((addImports ?? []).Select(i => new ImportEntry(i.ClassName, i.OuterIndex, i.FullName))),
             new ImportComparer()), "import table isn't the original plus the added imports");
         Check(w.Exports.Length == original.Exports.Length + add.Count, $"export count {w.Exports.Length}, expected {original.Exports.Length + add.Count}");
         Check(w.Exports.Where(e => e.SerialSize > 0).Min(e => e.SerialOffset) == w.TotalHeaderSize, "TotalHeaderSize isn't where the data starts");
