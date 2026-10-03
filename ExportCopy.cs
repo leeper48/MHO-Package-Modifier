@@ -27,10 +27,14 @@ static class ExportCopy
     /// <summary>Array properties known to hold object references (4 bytes each).</summary>
     /// <summary>Arrays of plain numbers (APEX cloth's per-LOD maps; an ApexClothingAsset's per-LOD material index lists).</summary>
     /// <summary>Arrays of names (8 bytes each): an AnimSet's bones (TrackBoneNames: the order of every sequence's tracks) and
-    /// the bones that take positions in a rotation-only set (UseTranslationBoneNames, ForceMeshTranslationBoneNames).</summary>
-    static readonly HashSet<string> NameArrays = new(StringComparer.OrdinalIgnoreCase) { "trackbonenames", "usetranslationbonenames", "forcemeshtranslationbonenames" };
+    /// the bones that take positions in a rotation-only set (UseTranslationBoneNames, ForceMeshTranslationBoneNames); an
+    /// AnimSequence's AnimMetaData_SkelControl: the skeletal controls it drives (Thor's animsequence_31: 2 names).</summary>
+    static readonly HashSet<string> NameArrays = new(StringComparer.OrdinalIgnoreCase) { "trackbonenames", "usetranslationbonenames", "forcemeshtranslationbonenames", "skelcontrolnamelist" };
     static readonly HashSet<string> NumberArrays = new(StringComparer.OrdinalIgnoreCase) { "clothingsectioninfo", "lodmaterialmap", "clothtographicsvertmap", "clothmovementscale", "clothweldingmap", "clothweldedindices", "boundsbodies", "compressedtrackoffsets" };   // AnimSequence: per track, offset and key count of translation and rotation
-    static readonly HashSet<string> ObjectArrays = new(StringComparer.OrdinalIgnoreCase) { "expressions", "functionexpressions", "staticmeshcomponents", "materials", "sockets", "clothingassets", "audioemotes", "bantertargets", "bodysetup", "constraintsetup", "bodies", "constraints", "sequences" };   // AnimSet: its AnimSequences   // SkeletalMesh: its sockets and clothing assets; PhysicsAsset: bodysetup / constraintsetup; PhysicsAssetInstance: bodies / constraints (checked with --dump-export)
+    /// <summary>Arrays of floats (4 bytes each, nothing else): an AnimSequence's morph-target curves (curvedata: tagged structs
+    /// { curvename, curveweights }) hold one weight per frame (Carnage's arm blades: 49 frames, 49 floats; checked 2026-10-03).</summary>
+    static readonly HashSet<string> FloatArrays = new(StringComparer.OrdinalIgnoreCase) { "curveweights" };
+    static readonly HashSet<string> ObjectArrays = new(StringComparer.OrdinalIgnoreCase) { "expressions", "functionexpressions", "staticmeshcomponents", "materials", "sockets", "clothingassets", "audioemotes", "bantertargets", "bodysetup", "constraintsetup", "bodies", "constraints", "sequences", "metadata" };   // AnimSet: its AnimSequences; AnimSequence: its AnimMetaData objects   // SkeletalMesh: its sockets and clothing assets; PhysicsAsset: bodysetup / constraintsetup; PhysicsAssetInstance: bodies / constraints (checked with --dump-export)
 
     public static int Run(string srcPath, string exportName, string dstPath, IReadOnlyCollection<string> cut, bool dryRun,
         string? rename = null, IReadOnlyDictionary<string, string>? replaceRefs = null)
@@ -615,6 +619,12 @@ static class ExportCopy
             // Never numbers when the first element reads as a property tag (name, then a *property type name): that's a
             // struct whose tags didn't parse, and copying it as is leaves its names unmapped (2.53.7 / 2.53.8 crashes).
             if (size - 4 >= 24 && LooksLikeTag(pkg, d, p + 4)) throw new InvalidDataException($"{where}: tagged structs that don't parse");
+            return;
+        }
+        // A float array of exactly count × 4 bytes can't be tagged structs (each of those is at least a None, 8 bytes).
+        if (FloatArrays.Contains(arrayName))
+        {
+            if (size - 4 != count * 4) throw new InvalidDataException($"{where}: {count} floats don't fill its {size - 4} bytes");
             return;
         }
         if (NameArrays.Contains(arrayName) && size - 4 == count * 8)
