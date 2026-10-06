@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
-<title>MHO Package Modifier manual</title>
+<title>MHO Package Modifier Manual</title>
 <style>
 body { font-family: "Segoe UI", Arial, sans-serif; font-size: 15px; line-height: 1.55; margin: 0; padding: 24px 40px 80px 40px; background: #ffffff; color: #1d1d1d; max-width: 1000px; }
 h1 { font-size: 28px; margin: 8px 0 4px 0; }
@@ -99,18 +99,18 @@ function mhoNext(dir) {
 <kbd>Shift+Enter</kbd> to the previous one.</p>
 
 <ul class="toc">
-<li><a href="#start">What the app does</a></li>
-<li><a href="#safety">How your game files stay safe</a></li>
-<li><a href="#setup">Getting started</a></li>
+<li><a href="#start">What the App Does</a></li>
+<li><a href="#safety">How Your Game Files Stay Safe</a></li>
+<li><a href="#setup">Getting Started</a></li>
 <li><a href="#updates">Updates</a></li>
-<li><a href="#concepts">Words used in this manual</a></li>
-<li><a href="#flow-value">Task: change a value</a></li>
-<li><a href="#flow-mesh">Task: replace a mesh</a></li>
-<li><a href="#placements">Task: edit a zone's buildings in Blender</a></li>
-<li><a href="#textures">Task: replace a texture, or add a new one</a></li>
-<li><a href="#flow-material">Task: make your own material</a></li>
-<li><a href="#zones">Task: rebuild a zone's distant view</a></li>
-<li><a href="#flow-bake">Task: bake LODs or a ground plane</a></li>
+<li><a href="#concepts">Words Used in This Manual</a></li>
+<li><a href="#flow-value">Task: Change a Value</a></li>
+<li><a href="#flow-mesh">Task: Replace a Mesh</a></li>
+<li><a href="#placements">Task: Edit a Zone's Buildings in Blender</a></li>
+<li><a href="#textures">Task: Replace a Texture, or Add a New One</a></li>
+<li><a href="#flow-material">Task: Make Your Own Material</a></li>
+<li><a href="#zones">Task: Rebuild a Zone's Distant View</a></li>
+<li><a href="#flow-bake">Task: Bake LODs or a Ground Plane</a></li>
 <li><a href="#browse">Tab: Browse</a></li>
 <li><a href="#properties">Tab: Properties</a></li>
 <li><a href="#meshes">Tab: Meshes</a> (and <a href="#meshview">3D view</a>)</li>
@@ -120,12 +120,12 @@ function mhoNext(dir) {
 <li><a href="#objects">Tab: Objects</a></li>
 <li><a href="#backups">Tab: Backups</a></li>
 <li><a href="#tools">Tab: Tools</a></li>
-<li><a href="#commands">Command reference</a></li>
+<li><a href="#commands">Command Reference</a></li>
 <li><a href="#trouble">Troubleshooting</a></li>
-<li><a href="#files">Where files go</a></li>
+<li><a href="#files">Where Files Go</a></li>
 </ul>
 
-<h2 id="start">What the app does</h2>
+<h2 id="start">What the App Does</h2>
 <p>MHO Package Modifier reads and changes Marvel Heroes Omega's game packages (<code>.upk</code> files in the game's
 <code>CookedPCConsole</code> folder). With it you can:</p>
 <ul>
@@ -141,7 +141,7 @@ function mhoNext(dir) {
 <p>The <b>Start</b> tab lists these tasks; each card takes you to the right tab. The <b>log</b> at the bottom of the window
 shows everything the app does, including what each check found.</p>
 
-<h2 id="safety">How your game files stay safe</h2>
+<h2 id="safety">How Your Game Files Stay Safe</h2>
 <ol>
 <li><b>Close the game before writing.</b> The game keeps its packages open, and it only reads a changed package when it
 starts. The top right of the window shows whether the game is running. While it is, the app blocks every write and tells you.</li>
@@ -162,7 +162,7 @@ name already exists, the app uses a new name (<code>_2</code>, <code>_3</code>, 
 ones. The exceptions are <b>zone rebuilds</b>, which start from the original every time, and <b>re-importing an updated
 placements file</b>, which replaces the earlier import of that same file.</div>
 
-<h2 id="setup">Getting started</h2>
+<h2 id="setup">Getting Started</h2>
 <ol class="steps">
 <li><b>Game Folder.</b> On its first start the app looks for the game in your Steam libraries. If it isn't found, set
 <b>Game Folder</b> at the top to the game's <code>CookedPCConsole</code> folder, e.g.
@@ -189,7 +189,7 @@ or your game is sent. The app is not code-signed, so Windows SmartScreen may war
 <p class="sub">Command line: <code>--check-update</code>, <code>--update</code>, or <code>--install-zip &lt;zip&gt;</code> for
 a release zip downloaded by hand (with its <code>.sha256</code> next to it).</p>
 
-<h2 id="concepts">Words used in this manual</h2>
+<h2 id="concepts">Words Used in This Manual</h2>
 <table>
 <tr><th>Word</th><th>Meaning</th></tr>
 <tr><td>Package</td><td>A <code>.upk</code> file. It holds objects: meshes, textures, materials, placed objects, levels.</td></tr>
@@ -205,7 +205,7 @@ a release zip downloaded by hand (with its <code>.sha256</code> next to it).</p>
 <tr><td><code>.bak</code></td><td>The original package, kept next to it the first time the app changes it.</td></tr>
 </table>
 
-<h2 id="flow-value">Task: change a value (fog, colours, material parameters)</h2>
+<h2 id="flow-value">Task: Change a Value (Fog, Colours, Material Parameters)</h2>
 <ol class="steps">
 <li>Open the package (for zone fog and sky: the zone's main level, e.g. <code>MidTown_Static.upk</code>).</li>
 <li>On <b>Browse</b>, type a filter (e.g. <code>fog</code>) and double-click the object. It opens on the <b>Properties</b> tab.</li>
@@ -219,7 +219,7 @@ Tick the ones that should get the same change (packages with the same name prefi
 <p class="sub">Only values the package already stores can be changed; a value left at its default isn't stored and doesn't appear.
 Colours are entered as <code>R,G,B[,A]</code>.</p>
 
-<h2 id="flow-mesh">Task: replace a mesh with your own model</h2>
+<h2 id="flow-mesh">Task: Replace a Mesh with Your Own Model</h2>
 <ol class="steps">
 <li>Open the package that contains the mesh. If the mesh isn't in the list, the package only refers to it: on Browse,
 <b>Where Does This Mesh Come from?</b> shows which package holds it.</li>
@@ -232,10 +232,10 @@ custom normals; Blender's own are fine.</li>
 <div class="warn">A mesh can have at most 65,535 vertices. The imported mesh has no collision. Imported meshes are used
 everywhere the original is: to change just one placed building, use <a href="#placements">Placements</a> instead.</div>
 
-<h2 id="placements">Task: edit a zone's buildings in Blender (Placements tab)</h2>
+<h2 id="placements">Task: Edit a Zone's Buildings in Blender (Placements Tab)</h2>
 <p>Add missing walls, move, rotate, scale, reshape or delete the placed meshes of a tiled zone (Hightown, Odin's Palace, or
 your own layout). The work goes in three steps.</p>
-<h3>1. Export the zone for Blender</h3>
+<h3>1. Export the Zone for Blender</h3>
 <ol class="steps">
 <li>Pick the <b>Zone</b>. The tile layout, region library and offset are filled in (choose <b>Custom</b> to give your own).</li>
 <li>Check <b>FBX to write</b>. By default it goes to <code>&lt;export folder&gt;\&lt;Zone&gt;_placements\</code>.</li>
@@ -256,7 +256,7 @@ your own layout). The work goes in three steps.</p>
 <div class="warn">Don't rename objects, don't join pieces together, and don't apply transforms (<kbd>Ctrl+A</kbd>) to the pieces.
 Leave the untouched pieces in the file: the app uses them to work out how Blender placed everything. Export the whole scene
 as FBX with Blender's default settings, under a new name in the same folder (Blender's <b>+</b> file number is handy).</div>
-<h3>3. Bring your edits into the game</h3>
+<h3>3. Bring Your Edits into the Game</h3>
 <ol class="steps">
 <li><b>Placements File</b> is filled in after an export; otherwise choose the <code>_placements.txt</code>.</li>
 <li><b>Edited FBX</b>: your file. <b>Newest in Folder</b> picks the most recent FBX there that isn't an export of the app.</li>
@@ -269,11 +269,11 @@ as FBX with Blender's default settings, under a new name in the same folder (Ble
 <br>and ends with <code>verify: PASS</code> for each tile.</li>
 <li><b>Write to Game…</b> (with the game closed). Each changed tile is written once and verified.</li>
 </ol>
-<h3>Changing it again</h3>
+<h3>Changing It Again</h3>
 <p>Keep working in the same Blender file and import the whole file again. The app sees that this placements file was
 imported before and starts each tile from its version before that import, so nothing is added twice and a piece you took
 out again disappears. You don't need to undo first.</p>
-<h3>What happens to your edits</h3>
+<h3>What Happens to Your Edits</h3>
 <ul>
 <li><b>Copies</b> become new placed pieces, with the original's mesh, materials and lighting.</li>
 <li><b>Moved originals</b> get their new position, rotation and scale, and keep their own lighting.</li>
@@ -286,7 +286,7 @@ windows light like the originals. Mirrored parts are turned the right way out.</
 their own actor instead of the tile's list; moving, reshaping or deleting those is skipped and reported. The round trip
 works for tiled zones only. <b>Self-Test</b> checks the maths on your export without changing anything.</div>
 
-<h2 id="textures">Task: replace a texture, or add a new one</h2>
+<h2 id="textures">Task: Replace a Texture, or Add a New One</h2>
 <p>On <b>Textures</b>, <b>Import an Image</b> works two ways:</p>
 <ul>
 <li><b>Replace the Selected Texture</b>: the texture you select in the list gets your image. It keeps its name and path, so
@@ -311,7 +311,7 @@ stores all its sizes inside the package instead (the way other mod tools do it),
 can also exist in several packages (same path); the game uses the copy it loads first. If your replacement doesn't show,
 <b>Find Name in Folder</b> (Browse tab) lists the other packages that have it: replace it there too.</div>
 
-<h2 id="flow-material">Task: make your own material</h2>
+<h2 id="flow-material">Task: Make Your Own Material</h2>
 <p>The game can't compile new shaders: every material must match one it already has. So you copy an existing material
 instance that has the features you need and swap its textures and values.</p>
 <ol class="steps">
@@ -329,7 +329,7 @@ point its textures at yours, one per line: <code>original.texture.path=your.text
 object for everything loaded after it. A broken copy of the water material once broke all water in a zone. Rename copies.
 Never leave out <code>materialfunctioninfos</code>: the material then renders as the default checker pattern.</div>
 
-<h2 id="zones">Task: rebuild a zone's distant view (Zones tab)</h2>
+<h2 id="zones">Task: Rebuild a Zone's Distant View (Zones Tab)</h2>
 <p>Some zones show a void or a flat colour past their edge. A <b>zone build</b> rebuilds the zone's main level from its
 original with a whole recipe: sky, distant buildings (grey boxes or baked LODs, hidden near the camera so the real ones
 show up close), ground and water planes, fog. The recipes for Hightown, Industry City and Odin's Palace come with the app
@@ -343,7 +343,7 @@ size for distant textures (512 keeps the package small; <i>Original</i> keeps th
 <div class="note">A rebuild always starts from the original main level, so it replaces an earlier build. Changes to other
 packages (tiles, libraries) aren't touched by it.</div>
 
-<h2 id="flow-bake">Task: bake LODs or a ground plane (Zones tab)</h2>
+<h2 id="flow-bake">Task: Bake LODs or a Ground Plane (Zones Tab)</h2>
 <p><b>Export Placed Meshes for Baking in Blender</b> writes a zone's real placed meshes, in their in-game positions, with
 materials and textures, as one scene:</p>
 <ul>
@@ -384,7 +384,7 @@ coordinate ranges per section), <b>Round-Trip Self-Test</b> (exports and re-impo
 check that a mesh can be edited). <b>FBX to Import</b> + <b>Dry Run Import</b> / <b>Import into Game File…</b> replace the
 mesh. <b>Export Folder</b> sets where every export of the app goes. See <a href="#flow-mesh">Task: replace a mesh</a>.</p>
 
-<h3 id="meshview">3D view</h3>
+<h3 id="meshview">3D View</h3>
 <p>Click a mesh in the list and it shows on the right in 3D, with its textures when the package has them (each
 section's material is followed to its colour texture, from the package or the <code>.tfc</code> caches; the log says how
 many sections got one). Meshes cooked into map tiles carry no materials of their own (the placed piece supplies them):
@@ -411,7 +411,7 @@ details</b> (size, format, and where each mip is stored: in the package or in th
 Bottom left: <b>Import an Image</b> (replace the selected texture, or add a new one), see <a href="#textures">Task: replace a texture, or add a new one</a>; its
 <b>Preview</b> button shows the chosen image file in the viewer before you import it. Right: the texture viewer. Drag the
 dividers to give the viewer more room.</p>
-<h3 id="preview">Texture viewer</h3>
+<h3 id="preview">Texture Viewer</h3>
 <p>Click a texture in the list and it shows on the right (you can move through the list with the arrow keys). The viewer
 shows the largest version of the texture the game has (from the package, or the bigger one in the
 <code>.tfc</code> caches). Many stock textures only keep smaller sizes: the status line says when the full size isn't
@@ -466,7 +466,7 @@ package, the object selected on Browse and your export folder. Edit the <b>Argum
 write keep <b>Dry run</b> ticked until you untick it, and ask before writing. <b>Copy as Command Line</b> copies the full
 command, for scripts. Words in <code>&lt;angle brackets&gt;</code> are yours to fill in.</p>
 
-<h2 id="commands">Command reference</h2>
+<h2 id="commands">Command Reference</h2>
 <p>Run <code>MHO_UPK_Mod.exe &lt;command&gt; &lt;arguments&gt;</code> from a command prompt, or use the Tools tab.
 Commands marked <span class="w">writes</span> change the game file only without <code>--dry-run</code>, with the same
 safety steps as the tabs. Put paths with spaces in quotes.</p>
@@ -487,7 +487,7 @@ safety steps as the tabs. Put paths with spaces in quotes.</p>
 <tr><td>"Undo refused: the live file isn't the version after the last recorded change"</td><td>Something else changed the package since the app's last write (another tool, or a copy). Use <b>Revert Selected to Original</b>, or run <code>--undo ... --force</code> from Tools if you're sure.</td></tr>
 </table>
 
-<h2 id="files">Where files go</h2>
+<h2 id="files">Where Files Go</h2>
 <table>
 <tr><th>What</th><th>Where</th></tr>
 <tr><td>Originals</td><td><code>&lt;package&gt;.upk.bak</code> next to each changed package in the game folder</td></tr>
