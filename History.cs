@@ -28,6 +28,13 @@ static class History
 
     sealed record Entry(int Id, DateTime Time, string Before, string After, string Label);
 
+    /// <summary>
+    /// False: each write is recorded (label, hashes before and after) but no copy of the previous version is kept, so there's
+    /// nothing to undo to; <see cref="IsLastWritten"/> still works. MHO Extended Mod Manager (0.37.204, Kurt, 2026-10-06:
+    /// users found its data\history folder growing to gigabytes) never undoes a write: Apply rebuilds from its originals.
+    /// </summary>
+    public static bool KeepSnapshots { get; set; } = true;
+
     /// <summary>Where snapshots go instead of %LOCALAPPDATA%\MhoPackageModifier\history (MHO Extended Mod Manager keeps them in its data folder next to the exe).</summary>
     public static string? RootOverride { get; set; }
 
@@ -100,14 +107,14 @@ static class History
             byte[] before = File.ReadAllBytes(upkPath);
             int id = undo.Concat(redo).Select(e => e.Id).DefaultIfEmpty(0).Max() + 1;
             var entry = new Entry(id, DateTime.Now, Hash(before), Hash(after), Label);
-            File.WriteAllBytes(Snap(dir, entry), before);
+            if (KeepSnapshots) File.WriteAllBytes(Snap(dir, entry), before);
             foreach (var r in redo) TryDelete(Snap(dir, r));
             redo.Clear();
             undo.Add(entry);
             int keep = Math.Max(before.Length, after.Length) > LargeFileBytes ? MaxEntriesLarge : MaxEntries;
             while (undo.Count > keep) { TryDelete(Snap(dir, undo[0])); undo.RemoveAt(0); }
             Save(dir, undo, redo);
-            Console.WriteLine($"  history: saved the previous version (undo with --undo \"{upkPath}\"; {undo.Count} step(s) kept)");
+            Console.WriteLine(KeepSnapshots ? $"  history: saved the previous version (undo with --undo \"{upkPath}\"; {undo.Count} step(s) kept)" : "  history: write recorded");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -202,4 +209,23 @@ static class History
     }
 
     static void TryDelete(string f) { try { File.Delete(f); } catch (IOException) { } }
+
+    /// <summary>
+    /// Deletes every kept snapshot (the numbered copies in each file's history folder) and keeps the records (history.txt),
+    /// so <see cref="IsLastWritten"/> still knows each file's last write. For a tool that keeps no snapshots
+    /// (<see cref="KeepSnapshots"/> false): returns the files and bytes removed. Files that can't be deleted are skipped.
+    /// </summary>
+    public static (int Files, long Bytes) DeleteSnapshots()
+    {
+        int n = 0; long bytes = 0;
+        if (!Directory.Exists(Root)) return (0, 0);
+        foreach (string dir in Directory.EnumerateDirectories(Root))
+            foreach (string f in Directory.EnumerateFiles(dir, "*.upk"))
+            {
+                if (!System.Text.RegularExpressions.Regex.IsMatch(Path.GetFileName(f), @"^\d{5}\.upk$")) continue;
+                try { long len = new FileInfo(f).Length; File.Delete(f); n++; bytes += len; }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            }
+        return (n, bytes);
+    }
 }
