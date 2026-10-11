@@ -200,7 +200,13 @@ static class ExportCopy
                 else EnqueueImportOuters(r);
             }
             var (cls, super, outer, arch) = EntryRefs(src, i);
-            if (cls > 0) { Console.WriteLine($"  {src.PathOf(e)}: its class is defined in the package; not supported"); return null; }
+            // a class the package defines itself (seek-free power packages carry script classes such as
+            // marvelgamecontent.powerfxhit): the target's own copy of that class, when it has one
+            if (cls > 0 && !replaced.ContainsKey(cls))
+            {
+                if (dstByPath.TryGetValue(Key(src, cls), out int dc)) replaced[cls] = dc;
+                else { Console.WriteLine($"  {src.PathOf(e)}: its class {src.PathOf(src.Exports[cls - 1])} is defined in the package, and the target has no copy of it; not supported"); return null; }
+            }
             if (super != 0) { Console.WriteLine($"  {src.PathOf(e)}: has a SuperIndex (a class/struct); not supported"); return null; }
             if (outer > 0 && !replaced.ContainsKey(outer)) { Note(outer - 1, i, "its outer"); queue.Enqueue(outer - 1); }   // an outer pointed at a target object isn't copied
             if (arch > 0) { Note(arch - 1, i, "its archetype"); queue.Enqueue(arch - 1); }
@@ -384,7 +390,10 @@ static class ExportCopy
         bool component = c.EndsWith("component") || distribution;
         // MHO's MarvelEntityCompSounds (a costume's voice set): TemplateOwnerClass (object, 4), TemplateName (name, 8),
         // NetIndex (4), then properties (checked on Miles Morales' and She-Hulk's, 2026-09-29).
-        bool templated = c == "marvelentitycompsounds";
+        // A power's and a projectile's effect components (PowerFxAnimation, PowerFxParticle, PowerFxSound …, ProjectileFxParticle …)
+        // have the same header (checked on Iceman's Rapid Fire and Human Torch's Burning Volley, 2026-10-10: a power borrowed
+        // from another hero copies them).
+        bool templated = c == "marvelentitycompsounds" || c.StartsWith("powerfx") || c.StartsWith("projectilefx");
         if (component && c != "staticmeshcomponent" && !templated && !distribution) throw new InvalidDataException($"component class '{cls}' not supported");
         var list = new List<Patch>();
         if (templated)
@@ -392,7 +401,7 @@ static class ExportCopy
             list.Add(new Patch(0, Kind.Object, "templateownerclass"));
             list.Add(new Patch(4, Kind.Name, "templatename"));
             int q = Tags(pkg, d, 16, d.Length, "", list);
-            if (q != d.Length) throw new InvalidDataException($"{d.Length - q} bytes after the voice set's properties (none expected)");
+            if (q != d.Length) throw new InvalidDataException($"{d.Length - q} bytes after the component's properties (none expected)");
             return list;
         }
         // MHO components: an extra int32, then NetIndex, then properties (byte 8); everything else from byte 4.
