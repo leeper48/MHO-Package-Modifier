@@ -196,6 +196,8 @@ static class ExportCopy
                 int r = BinaryPrimitives.ReadInt32LittleEndian(d.AsSpan(pt.Offset));
                 if (IsCut(pt.Where, cut)) { if (r != 0) cutRefs++; continue; }
                 if (replaced.ContainsKey(r)) continue;
+                if (r > src.Exports.Length || -r > src.Imports.Length)
+                { Console.WriteLine($"  can't copy {src.PathOf(e)} ({src.ClassOf(e)}): {pt.Where} at byte {pt.Offset} reads {r}, outside the package's tables"); return null; }
                 if (r > 0) { Note(r - 1, i, pt.Where); queue.Enqueue(r - 1); }
                 else EnqueueImportOuters(r);
             }
@@ -327,7 +329,8 @@ static class ExportCopy
         return new CopyResult(output, map[root + 1], Check);
     }
 
-    static bool IsCut(string where, IReadOnlyCollection<string> cut) => cut.Any(c => where.Split('.', '[')[0].Equals(c, StringComparison.OrdinalIgnoreCase));
+    // a property name cuts every reference in it; "name[k]" only that element (a stale stock value in one list entry)
+    static bool IsCut(string where, IReadOnlyCollection<string> cut) => cut.Any(c => c.Contains('[') ? where.Equals(c, StringComparison.OrdinalIgnoreCase) : where.Split('.', '[')[0].Equals(c, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Path + class of an object reference, for matching and verification.</summary>
     static string Key(Package pkg, int r)
