@@ -19,6 +19,7 @@ static class CommandCatalog
         new("Inspect", "(scan)", "<folder> [--out file] [--top-only] [--skeletal] [--include-empty] [--include-backups] [--decode-static]",
             "Scan every package in a folder and list the static meshes each one contains (--decode-static: also run the mesh parser on every one).", false, "{folder} --top-only"),
         new("Inspect", "--list-exports", "<package.upk> [class-filter]", "List a package's exports: index, class, size, path.", false, "--list-exports {pkg} staticmesh"),
+        new("Inspect", "--list-imports", "<package.upk> [filter]", "List a package's imports: index, class, full path (what it needs from other packages).", false, "--list-imports {pkg} material"),
         new("Inspect", "--dump-export", "<package.upk> <export> [--out folder]", "Write one export's raw bytes and an annotated dump (property tags, object arrays, a material instance's static switches, native data in hex).", false, "--dump-export {pkg} {export}"),
         new("Inspect", "--names", "<package.upk> [index ...]", "Print the name table (all entries, or the given indices).", false, "--names {pkg}"),
         new("Inspect", "--find-name", "<folder> <name> [--include-backups]", "Every package that exports or imports an object with this name (* wildcards).", false, "--find-name {folder} {export}"),

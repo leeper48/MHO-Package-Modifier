@@ -370,6 +370,27 @@ static class Program
             return 0;
         }
 
+        int impAt = Array.FindIndex(args, a => a.Equals("--list-imports", StringComparison.OrdinalIgnoreCase));
+        if (impAt >= 0)
+        {
+            // Read-only: every import with its full path (outers that are exports included) and class.
+            if (impAt + 1 >= args.Length) { Usage(); return 2; }
+            var pkg = Package.Open(args[impAt + 1]);
+            string? filter = impAt + 2 < args.Length && !args[impAt + 2].StartsWith("--") ? args[impAt + 2] : null;
+            for (int i = 0; i < pkg.Imports.Length; i++)
+            {
+                var parts = new List<string>();
+                for (int r = -(i + 1), guard = 0; r != 0 && guard < 32; guard++)
+                {
+                    if (r < 0) { var im = pkg.Imports[-r - 1]; parts.Insert(0, im.ObjectName); r = im.OuterIndex; }
+                    else { parts.Insert(0, pkg.PathOf(pkg.Exports[r - 1]) + " (export)"); break; }
+                }
+                string line = $"  #-{i + 1,-6} {pkg.Imports[i].ClassName,-32} {string.Join('.', parts)}";
+                if (filter == null || line.Contains(filter, StringComparison.OrdinalIgnoreCase)) Console.WriteLine(line);
+            }
+            return 0;
+        }
+
         int texExportAt = Array.FindIndex(args, a => a.Equals("--export-textures", StringComparison.OrdinalIgnoreCase));
         if (texExportAt >= 0)
         {
