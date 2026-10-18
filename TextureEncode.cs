@@ -27,7 +27,9 @@ static class TextureEncode
     /// <param name="format">"dxt1", "dxt5" or null (choose).</param>
     public static Result FromImage(string path, string? format, int split, float scale, bool noMips = false, int maxSize = 0, bool refine = false)
     {
-        using var bmp = new Bitmap(path);
+        // read through .NET: GDI+ can't open a path past about 260 characters (the Mod Manager's Model builds under
+        // Documents\My Games\… with long package names, 2026-10-17); decoded from the bytes, pixels as stored
+        using var bmp = new Bitmap(new MemoryStream(File.ReadAllBytes(path)));
         int w = bmp.Width, h = bmp.Height;
         if (w % 4 != 0 || h % 4 != 0) throw new InvalidDataException($"{w}x{h}: DXT needs sizes divisible by 4");
         var rgba = new byte[w * h * 4];

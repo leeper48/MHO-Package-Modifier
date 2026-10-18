@@ -255,7 +255,8 @@ static class StaticMeshBuilder
     public static byte[] Serialize(StaticMesh original, BuiltMesh m, long serialOffset, bool dropBodySetup = false)
     {
         if (original.LodCount != 1) throw new InvalidDataException($"mesh has {original.LodCount} LODs; only single-LOD meshes can be imported so far");
-        if (original.HasVertexColors) throw new InvalidDataException("mesh has per-vertex colors; importing would drop them, which isn't supported yet");
+        // (a mesh with vertex colours needs new ones for the new geometry: the Mod Manager's dodge ghosts give them)
+        if (original.HasVertexColors && m.ColorsBgra == null) throw new InvalidDataException("mesh has per-vertex colors; importing would drop them, which isn't supported yet");
         var L = original.Layout;
         byte[] src = L.Original;
         using var ms = new MemoryStream(src.Length * 2);
