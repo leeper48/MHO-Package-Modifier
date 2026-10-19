@@ -68,6 +68,10 @@ static class TextureImport
     /// <summary>Names a texture export in this form refers to (added to the package's name table if missing).</summary>
     static IEnumerable<string> NamesFor(DdsImage img) => ["NeverStream", "BoolProperty", "IntProperty", "ByteProperty", "EPixelFormat", img.Format];
 
+    /// <summary>The names a normal map's decoding tags need (<see cref="Builder"/> with normalMap).</summary>
+    internal static readonly string[] NormalMapNames = ["SRGB", "UnpackMin", "FloatProperty", "CompressionSettings", "TextureCompressionSettings", "TC_NormalMap",
+        "LODGroup", "TextureGroup", "TEXTUREGROUP_CharacterNormalMap"];
+
     static void AddMissingNames(Package pkg, List<string> addNames, IEnumerable<string> names)
     {
         foreach (string n in names)
@@ -80,7 +84,10 @@ static class TextureImport
     /// offset (the inline mip offsets point at their own data). Every name used must already be in <paramref name="tw"/>'s
     /// added names.
     /// </summary>
-    static Func<long, byte[]>? Builder(Package pkg, int template, DdsImage img, TagWriter tw, bool replace, out string? error)
+    /// <param name="normalMap">(2.53.26) the texture is a normal map: whatever the template says, it's read as the game's own
+    /// normal maps are (SRGB false, UnpackMin -1 -1 -1, TC_NormalMap; the template's LOD group, else
+    /// TEXTUREGROUP_CharacterNormalMap). Needs <see cref="NormalMapNames"/> in <paramref name="tw"/>'s names.</param>
+    static Func<long, byte[]>? Builder(Package pkg, int template, DdsImage img, TagWriter tw, bool replace, out string? error, bool normalMap = false)
     {
         error = null;
         var t = pkg.Exports[template];
@@ -112,15 +119,29 @@ static class TextureImport
             // Every other setting of the original, as it was: only the tags describing the old size, format and storage go.
             string[] storage = ["SizeX", "SizeY", "OriginalSizeX", "OriginalSizeY", "Format", "NeverStream", "TextureFileCacheName", "MipTailBaseIdx",
                 "FirstResourceMemMip", "bIsStreamable", "bHasBeenLoadedFromPersistentArchive", "TextureFileCacheGuid"];
-            foreach (var tg in tags) if (!storage.Any(x => tg.Name.Equals(x, StringComparison.OrdinalIgnoreCase))) props.Write(td, tg.Start, tg.End - tg.Start);
+            string[] skip = normalMap ? [.. storage, "SRGB", "UnpackMin", "CompressionSettings"] : storage;
+            foreach (var tg in tags) if (!skip.Any(x => tg.Name.Equals(x, StringComparison.OrdinalIgnoreCase))) props.Write(td, tg.Start, tg.End - tg.Start);
         }
         else
         {
             // A new texture: the template's LOD group, and how its pixels are read (2.53.25). A normal map's template has SRGB
             // false, UnpackMin -1 and TC_NormalMap; without them the game reads the new normal map as a color image and lights
             // it wrong (seams across faces; a user's report). Templates that don't set them (color maps) give the same bytes as before.
-            string[] decoding = ["LODGroup", "SRGB", "UnpackMin", "CompressionSettings"];
+            string[] decoding = normalMap ? ["LODGroup"] : ["LODGroup", "SRGB", "UnpackMin", "CompressionSettings"];
             foreach (var tg in tags) if (decoding.Any(x => tg.Name.Equals(x, StringComparison.OrdinalIgnoreCase))) props.Write(td, tg.Start, tg.End - tg.Start);
+        }
+        if (normalMap)
+        {
+            // as Punisher Modern VU's punisher_modernvu_normals: srgb false, unpackmin[0..2] -1, tc_normalmap, a normal-map LOD group
+            props.Write(tw.NameRef("SRGB")); props.Write(tw.NameRef("BoolProperty")); props.Write(I(0)); props.Write(I(0)); props.WriteByte(0);
+            for (int k = 0; k < 3; k++)
+            {
+                props.Write(tw.NameRef("UnpackMin")); props.Write(tw.NameRef("FloatProperty")); props.Write(I(4)); props.Write(I(k));
+                props.Write(BitConverter.GetBytes(-1f));
+            }
+            props.Write(tw.Tag("CompressionSettings", "ByteProperty", "TextureCompressionSettings", tw.NameRef("TC_NormalMap")));
+            if (!tags.Any(x => x.Name.Equals("LODGroup", StringComparison.OrdinalIgnoreCase)))
+                props.Write(tw.Tag("LODGroup", "ByteProperty", "TextureGroup", tw.NameRef("TEXTUREGROUP_CharacterNormalMap")));
         }
         props.Write(tw.NameRef("None"));
         byte[] head = props.ToArray();
@@ -275,7 +296,8 @@ static class TextureImport
     }
 
     /// <summary>One texture to replace: the Texture2D's object name (or full path) and the .dds bytes.</summary>
-    public sealed record Replacement(string Texture, byte[] Dds, string Source);
+    /// <param name="NormalMap">(2.53.26) a normal map: read as the game's own are (sRGB off …), whatever the original said.</param>
+    public sealed record Replacement(string Texture, byte[] Dds, string Source, bool NormalMap = false);
 
     /// <summary>
     /// --replace-texture for many textures of one package in a single rebuild (each exactly as the single command would
@@ -286,7 +308,7 @@ static class TextureImport
     {
         problems = [];
         verify = _ => ["nothing built"];
-        var targets = new List<(int Index, string Path, DdsImage Img, string Source)>();
+        var targets = new List<(int Index, string Path, DdsImage Img, string Source, bool Normal)>();
         foreach (var r in items)
         {
             int index = Array.FindIndex(pkg.Exports, e => (e.ObjectName.Equals(r.Texture, StringComparison.OrdinalIgnoreCase) || pkg.PathOf(e).Equals(r.Texture, StringComparison.OrdinalIgnoreCase))
@@ -295,17 +317,17 @@ static class TextureImport
             if (targets.Any(x => x.Index == index)) { problems.Add($"{r.Source}: '{r.Texture}' is replaced twice"); continue; }
             var img = ParseDds(r.Dds, out string? err);
             if (img == null) { problems.Add($"{r.Source}: {err}"); continue; }
-            targets.Add((index, pkg.PathOf(pkg.Exports[index]), img, r.Source));
+            targets.Add((index, pkg.PathOf(pkg.Exports[index]), img, r.Source, r.NormalMap));
         }
         if (problems.Count > 0) return null;
 
         var addNames = new List<string>();
-        foreach (var x in targets) AddMissingNames(pkg, addNames, NamesFor(x.Img));
+        foreach (var x in targets) AddMissingNames(pkg, addNames, x.Normal ? NamesFor(x.Img).Concat(NormalMapNames) : NamesFor(x.Img));
         var tw = new TagWriter(pkg, addNames);
         var replaced = new Dictionary<int, Func<long, byte[]>>();
         foreach (var x in targets)
         {
-            var build = Builder(pkg, x.Index, x.Img, tw, replace: true, out string? err);
+            var build = Builder(pkg, x.Index, x.Img, tw, replace: true, out string? err, x.Normal);
             if (build == null) problems.Add($"{x.Source}: {err}");
             else replaced[x.Index] = build;
         }
