@@ -76,7 +76,7 @@ static class TextureImport
 
     /// <summary>
     /// The export data for <paramref name="img"/> based on the template texture: with <paramref name="replace"/> every
-    /// other tag of the template is kept, otherwise only its LODGroup. Returns a builder for the data at a given file
+    /// other tag of the template is kept, otherwise its LODGroup and how its pixels are read (SRGB, UnpackMin, CompressionSettings). Returns a builder for the data at a given file
     /// offset (the inline mip offsets point at their own data). Every name used must already be in <paramref name="tw"/>'s
     /// added names.
     /// </summary>
@@ -114,7 +114,14 @@ static class TextureImport
                 "FirstResourceMemMip", "bIsStreamable", "bHasBeenLoadedFromPersistentArchive", "TextureFileCacheGuid"];
             foreach (var tg in tags) if (!storage.Any(x => tg.Name.Equals(x, StringComparison.OrdinalIgnoreCase))) props.Write(td, tg.Start, tg.End - tg.Start);
         }
-        else if (lod != null) props.Write(td, lod.Start, lod.End - lod.Start);
+        else
+        {
+            // A new texture: the template's LOD group, and how its pixels are read (2.53.25). A normal map's template has SRGB
+            // false, UnpackMin -1 and TC_NormalMap; without them the game reads the new normal map as a color image and lights
+            // it wrong (seams across faces; a user's report). Templates that don't set them (color maps) give the same bytes as before.
+            string[] decoding = ["LODGroup", "SRGB", "UnpackMin", "CompressionSettings"];
+            foreach (var tg in tags) if (decoding.Any(x => tg.Name.Equals(x, StringComparison.OrdinalIgnoreCase))) props.Write(td, tg.Start, tg.End - tg.Start);
+        }
         props.Write(tw.NameRef("None"));
         byte[] head = props.ToArray();
         var levels = img.Levels;
