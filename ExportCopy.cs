@@ -217,7 +217,7 @@ static class ExportCopy
             if (super != 0)
             {
                 // a class's parent (2.53.29): copied or imported like any reference; other structs aren't supported
-                if (!src.ClassOf(e).Equals("Class", StringComparison.OrdinalIgnoreCase)) { Console.WriteLine($"  {src.PathOf(e)}: has a SuperIndex (a struct); not supported"); return null; }
+                if (!src.ClassOf(e).Equals("Class", StringComparison.OrdinalIgnoreCase) && !src.ClassOf(e).Equals("Function", StringComparison.OrdinalIgnoreCase) && !src.ClassOf(e).Equals("ScriptStruct", StringComparison.OrdinalIgnoreCase)) { Console.WriteLine($"  {src.PathOf(e)}: has a SuperIndex (a struct); not supported"); return null; }
                 if (super > 0 && !replaced.ContainsKey(super)) { Note(super - 1, i, "its parent class"); queue.Enqueue(super - 1); }
                 else EnqueueImportOuters(super);
             }
@@ -395,6 +395,9 @@ static class ExportCopy
     /// </summary>
     public static Func<Package, byte[], int, string, List<NativeRef>?>? NativeHook { get; set; }
 
+    static readonly HashSet<string> ScriptProperties = new(StringComparer.OrdinalIgnoreCase) { "byteproperty", "structproperty", "objectproperty", "componentproperty",
+        "arrayproperty", "interfaceproperty", "classproperty", "delegateproperty", "mapproperty", "boolproperty", "intproperty", "floatproperty", "nameproperty", "strproperty" };
+
     /// <summary>A class's default object (default__&lt;class&gt;, directly in its package): an ordinary object (properties from
     /// byte 4) even when its class is a component class (a power's script class powerfxparticle_…: 2.53.29).</summary>
     static bool IsClassDefault(Package pkg, ExportEntry e) =>
@@ -409,11 +412,47 @@ static class ExportCopy
         if (c == "class")
         {
             var cd = ClassData.Parse(d, out string? why) ?? throw new InvalidDataException("the class doesn't read: " + why);
-            if (cd.Children != 0 || cd.Functions > 0) throw new InvalidDataException("a script class with properties and functions (compiled code) isn't copied yet");
+            // (2.53.30: a class's properties and functions are its children, copied with it; their code is walked by ScriptCode)
             var cl = new List<Patch>();
             foreach (int at in cd.ObjectRefs) cl.Add(new Patch(at, Kind.Object, "class"));
             foreach (int at in cd.NameRefs) cl.Add(new Patch(at, Kind.Name, "class"));
             return [.. cl.OrderBy(x => x.Offset)];
+        }
+        // A script class's fields (2.53.30): its functions (compiled code: every reference inside found by ScriptCode, checked
+        // on all 2,265 functions of the stock power packages) and properties (the UProperty layouts)
+        // A struct type a script class defines (powerfxparticle_agmstartdust.fminmax, 2.53.30; checked with --dump-export): the
+        // empty tagged list, the struct part (as a function's, its code walked when there is any), StructFlags, then the
+        // struct's default values as tagged properties to None
+        if (c == "scriptstruct")
+        {
+            var sl = new List<Patch>();
+            if (I32(d, 8) != 0) throw new InvalidDataException("tagged properties aren't the empty list");
+            sl.Add(new Patch(4, Kind.Name, "scriptstruct"));
+            for (int k = 0; k < 5; k++) sl.Add(new Patch(12 + 4 * k, Kind.Object, "scriptstruct"));   // Next, SuperStruct, ScriptText, Children, CppText
+            int sp = 32 + 8;                                                                            // Line, TextPos
+            sp += 4; int storage = I32(d, sp); sp += 4;
+            if (storage > 0)
+            {
+                ScriptCode.UseNoneName(Array.FindIndex(pkg.Names, n => n.Equals("None", StringComparison.OrdinalIgnoreCase)));
+                var code = new ScriptCode.Refs();
+                if (!ScriptCode.Walk(d, sp, sp + storage, code, out string? cwhy)) throw new InvalidDataException("the struct's code doesn't read: " + cwhy);
+                foreach (int at in code.Objects) sl.Add(new Patch(at, Kind.Object, "scriptstruct"));
+                foreach (int at in code.Names) sl.Add(new Patch(at, Kind.Name, "scriptstruct"));
+            }
+            sp += storage + 4;                                                                          // StructFlags
+            int se = Tags(pkg, d, sp, d.Length, "", sl);
+            if (se != d.Length) throw new InvalidDataException($"{d.Length - se} bytes after the struct's defaults");
+            return [.. sl.OrderBy(x => x.Offset)];
+        }
+        if (c == "function" || ScriptProperties.Contains(c))
+        {
+            ScriptCode.UseNoneName(Array.FindIndex(pkg.Names, n => n.Equals("None", StringComparison.OrdinalIgnoreCase)));
+            string? fwhy;
+            var fr = (c == "function" ? ScriptCode.Function(d, out fwhy) : ScriptCode.Property(d, cls, out fwhy)) ?? throw new InvalidDataException($"the {c} doesn't read: {fwhy}");
+            var fl = new List<Patch>();
+            foreach (int at in fr.Objects) fl.Add(new Patch(at, Kind.Object, c));
+            foreach (int at in fr.Names) fl.Add(new Patch(at, Kind.Name, c));
+            return [.. fl.OrderBy(x => x.Offset)];
         }
         // Distributions (DistributionFloatUniform …, a particle module's curves when not baked to a lookup table) are components
         // in UE3, with the same header as MHO's other components (int32 0, NetIndex, properties from byte 8; checked on Doctor
