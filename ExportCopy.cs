@@ -489,7 +489,8 @@ static class ExportCopy
         // DecalMaterial and TextureFlipBook add no native data of their own (UE3 subclasses of Material / Texture2D; the layouts
         // check out on the power packages' decals and flipbooks, 2026-10-03).
         else if (c is "material" or "decalmaterial") MaterialNative(pkg, d, p, false, list);
-        else if (c == "materialinstanceconstant") { if (p != d.Length) MaterialNative(pkg, d, p, true, list); }
+        // MaterialInstanceTimeVarying: a MaterialInstance like the constant one (its curves are tagged properties), same native data
+        else if (c is "materialinstanceconstant" or "materialinstancetimevarying") { if (p != d.Length) MaterialNative(pkg, d, p, true, list); }
         else if (c is "texture2d" or "textureflipbook") TextureMips(d, p, list);
         else if (c == "staticmeshcollectionactor")
         {
