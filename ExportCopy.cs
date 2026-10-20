@@ -34,14 +34,14 @@ static class ExportCopy
         // (poweranims: absattack_damagecone_loop), animation set aliases, costume classes an effect needs or skips
         // (entityexcluded: marvelplayer_greengoblin_jackolantern), conditions (conditionexcluded: marvelconditioneffect_phoenixtransform)
         // and bones (additionaldeactivationpoints: g_head), all by name
-        "poweranims", "animsetaliastoadd", "animsetaliastoremove", "entityexcluded", "entityrequired", "conditionrequired", "conditionexcluded", "additionaldeactivationpoints", "additionalactivationpoints" };
+        "poweranims", "animsetaliastoadd", "animsetaliastoremove", "entityexcluded", "entityrequired", "conditionrequired", "conditionexcluded", "additionaldeactivationpoints", "additionalactivationpoints", "attachmentbones", "weaponslot" };   // (2.53.29: an attachment class's bones, Thor's hammer g_r_palm)
     static readonly HashSet<string> NumberArrays = new(StringComparer.OrdinalIgnoreCase) { "clothingsectioninfo", "lodmaterialmap", "clothtographicsvertmap", "clothmovementscale", "clothweldingmap", "clothweldedindices", "boundsbodies", "compressedtrackoffsets",   // AnimSequence: per track, offset and key count of translation and rotation
         "vertexdata", "permutedvertexdata", "facetridata", "edgedirections", "facenormaldirections", "faceplanedata",   // a body setup's convex hulls (agggeom.convexelems: vectors, planes, ints; Hulk's asteroid, 2026-10-03)
         "precachedphysscale", "randomseeds" };   // a body setup's cooked scales (vectors); a *_seeded particle module's seeds (ints)
     /// <summary>Arrays of floats (4 bytes each, nothing else): an AnimSequence's morph-target curves (curvedata: tagged structs
     /// { curvename, curveweights }) hold one weight per frame (Carnage's arm blades: 49 frames, 49 floats; checked 2026-10-03).</summary>
     static readonly HashSet<string> FloatArrays = new(StringComparer.OrdinalIgnoreCase) { "curveweights", "loddistances", "lookuptable" };
-    static readonly HashSet<string> ObjectArrays = new(StringComparer.OrdinalIgnoreCase) { "expressions", "functionexpressions", "staticmeshcomponents", "materials", "sockets", "clothingassets", "audioemotes", "bantertargets", "bodysetup", "constraintsetup", "bodies", "constraints", "sequences", "metadata", "emitters", "lodlevels", "modules", "spawnmodules", "updatemodules", "meshmaterials", "defaultmaterials", "particlemoduleeventstosendtogame", "projectileclasses", "attachmentstoshowonactivate", "attachmentstohideonactivate", "animsetstoadd" };   // (2.53.27: a thrown car's projectile classes; the Thing's cart attachments)   // AnimSet: its AnimSequences; AnimSequence: its AnimMetaData objects   // SkeletalMesh: its sockets and clothing assets; PhysicsAsset: bodysetup / constraintsetup; PhysicsAssetInstance: bodies / constraints (checked with --dump-export)
+    static readonly HashSet<string> ObjectArrays = new(StringComparer.OrdinalIgnoreCase) { "expressions", "functionexpressions", "staticmeshcomponents", "materials", "sockets", "clothingassets", "audioemotes", "bantertargets", "bodysetup", "constraintsetup", "bodies", "constraints", "sequences", "metadata", "emitters", "lodlevels", "modules", "spawnmodules", "updatemodules", "meshmaterials", "defaultmaterials", "particlemoduleeventstosendtogame", "projectileclasses", "attachmentstoshowonactivate", "attachmentstohideonactivate", "animsetstoadd", "components", "modelmesh", "animationset" };   // (2.53.29: a class default's component list; an attachment class's meshes)   // (2.53.27: a thrown car's projectile classes; the Thing's cart attachments)   // AnimSet: its AnimSequences; AnimSequence: its AnimMetaData objects   // SkeletalMesh: its sockets and clothing assets; PhysicsAsset: bodysetup / constraintsetup; PhysicsAssetInstance: bodies / constraints (checked with --dump-export)
 
     public static int Run(string srcPath, string exportName, string dstPath, IReadOnlyCollection<string> cut, bool dryRun,
         string? rename = null, IReadOnlyDictionary<string, string>? replaceRefs = null)
@@ -176,7 +176,7 @@ static class ExportCopy
             var e = src.Exports[i];
             if (i != root && dstByPath.ContainsKey(Expect(dst, i + 1))) { reusedEarly.Add(i); order.Add(i); continue; }
             List<Patch> list;
-            try { list = Parse(src, src.ReadExportBytes(e), src.ClassOf(e)); }
+            try { list = Parse(src, src.ReadExportBytes(e), src.ClassOf(e), IsClassDefault(src, e)); }
             catch (Exception ex) when (ex is InvalidDataException or PackageFormatException or ArgumentOutOfRangeException)
             {
                 Console.WriteLine($"  can't copy {src.PathOf(e)} ({src.ClassOf(e)}): {ex.Message}");
@@ -212,9 +212,15 @@ static class ExportCopy
             if (cls > 0 && !replaced.ContainsKey(cls))
             {
                 if (dstByPath.TryGetValue(Key(src, cls), out int dc)) replaced[cls] = dc;
-                else { Console.WriteLine($"  {src.PathOf(e)}: its class {src.PathOf(src.Exports[cls - 1])} is defined in the package, and the target has no copy of it; not supported"); return null; }
+                else { Note(cls - 1, i, "its class"); queue.Enqueue(cls - 1); }   // (2.53.29: the class is copied too)
             }
-            if (super != 0) { Console.WriteLine($"  {src.PathOf(e)}: has a SuperIndex (a class/struct); not supported"); return null; }
+            if (super != 0)
+            {
+                // a class's parent (2.53.29): copied or imported like any reference; other structs aren't supported
+                if (!src.ClassOf(e).Equals("Class", StringComparison.OrdinalIgnoreCase)) { Console.WriteLine($"  {src.PathOf(e)}: has a SuperIndex (a struct); not supported"); return null; }
+                if (super > 0 && !replaced.ContainsKey(super)) { Note(super - 1, i, "its parent class"); queue.Enqueue(super - 1); }
+                else EnqueueImportOuters(super);
+            }
             if (outer > 0 && !replaced.ContainsKey(outer)) { Note(outer - 1, i, "its outer"); queue.Enqueue(outer - 1); }   // an outer pointed at a target object isn't copied
             if (arch > 0) { Note(arch - 1, i, "its archetype"); queue.Enqueue(arch - 1); }
             else EnqueueImportOuters(arch);   // an imported archetype's outer can be an export (a component template: marvelgamecontent)
@@ -294,9 +300,10 @@ static class ExportCopy
                 BinaryPrimitives.WriteInt32LittleEndian(d.AsSpan(pt.Offset), nv);
             }
             byte[] entry = src.Body.AsSpan(src.ExportEntryStart[i], src.ExportEntryEnd[i] - src.ExportEntryStart[i]).ToArray();
-            var (cls, _, outer, arch) = EntryRefs(src, i);
+            var (cls, super, outer, arch) = EntryRefs(src, i);
             int Ctx(string what, int r) { try { return Map(r); } catch (InvalidDataException ex) { throw new InvalidDataException($"entry {what}: {ex.Message}"); } }
             BinaryPrimitives.WriteInt32LittleEndian(entry.AsSpan(0), Ctx("class", cls));
+            BinaryPrimitives.WriteInt32LittleEndian(entry.AsSpan(4), Ctx("super", super));
             BinaryPrimitives.WriteInt32LittleEndian(entry.AsSpan(8), Ctx("outer", outer));
             BinaryPrimitives.WriteInt32LittleEndian(entry.AsSpan(12), i == root && rename != null ? EnsureName(rename) : NameIdx(BinaryPrimitives.ReadInt32LittleEndian(entry.AsSpan(12))));
             if (i == root && rename != null) BinaryPrimitives.WriteInt32LittleEndian(entry.AsSpan(16), 0);
@@ -388,9 +395,26 @@ static class ExportCopy
     /// </summary>
     public static Func<Package, byte[], int, string, List<NativeRef>?>? NativeHook { get; set; }
 
-    static List<Patch> Parse(Package pkg, byte[] d, string cls)
+    /// <summary>A class's default object (default__&lt;class&gt;, directly in its package): an ordinary object (properties from
+    /// byte 4) even when its class is a component class (a power's script class powerfxparticle_…: 2.53.29).</summary>
+    static bool IsClassDefault(Package pkg, ExportEntry e) =>
+        e.ObjectName.StartsWith("default__", StringComparison.OrdinalIgnoreCase) && (e.OuterIndex == 0 || pkg.ClassOf(pkg.Exports[e.OuterIndex - 1]).Equals("Package", StringComparison.OrdinalIgnoreCase));
+
+    static List<Patch> Parse(Package pkg, byte[] d, string cls, bool classDefault = false)
     {
         string c = cls.ToLowerInvariant();
+        // A compiled script class the package defines itself (a power's projectile or attachment class: 2.53.29): ClassData
+        // gives every reference and name in it. Only classes without children: one with properties and functions (powerfxhit's
+        // oninit) carries bytecode with references inside, not copied yet.
+        if (c == "class")
+        {
+            var cd = ClassData.Parse(d, out string? why) ?? throw new InvalidDataException("the class doesn't read: " + why);
+            if (cd.Children != 0 || cd.Functions > 0) throw new InvalidDataException("a script class with properties and functions (compiled code) isn't copied yet");
+            var cl = new List<Patch>();
+            foreach (int at in cd.ObjectRefs) cl.Add(new Patch(at, Kind.Object, "class"));
+            foreach (int at in cd.NameRefs) cl.Add(new Patch(at, Kind.Name, "class"));
+            return [.. cl.OrderBy(x => x.Offset)];
+        }
         // Distributions (DistributionFloatUniform …, a particle module's curves when not baked to a lookup table) are components
         // in UE3, with the same header as MHO's other components (int32 0, NetIndex, properties from byte 8; checked on Doctor
         // Strange's particle systems, 2026-10-03).
@@ -401,7 +425,11 @@ static class ExportCopy
         // A power's and a projectile's effect components (PowerFxAnimation, PowerFxParticle, PowerFxSound …, ProjectileFxParticle …)
         // have the same header (checked on Iceman's Rapid Fire and Human Torch's Burning Volley, 2026-10-10: a power borrowed
         // from another hero copies them).
-        bool templated = c == "marvelentitycompsounds" || c.StartsWith("powerfx") || c.StartsWith("projectilefx");
+        // A class default's subobjects: a projectile's light environment and animated mesh (2.53.29: same header, checked with
+        // --dump-export on Daredevil's Relentless Justice and Beast's Barrier Gadget; no native data)
+        bool templated = !classDefault && (c == "marvelentitycompsounds" || c.StartsWith("powerfx") || c.StartsWith("projectilefx")
+            || c == "dynamiclightenvironmentcomponent" || c == "skeletalmeshcomponent");
+        if (classDefault) component = false;
         if (component && c != "staticmeshcomponent" && !templated && !distribution) throw new InvalidDataException($"component class '{cls}' not supported");
         var list = new List<Patch>();
         if (templated)
@@ -729,14 +757,14 @@ static class ExportCopy
             var se = src.Exports[i]; var we = w.Exports[t - 1];
             string label = src.PathOf(se);
             if (!expect(w, i + 1).Equals(Key(w, t), StringComparison.OrdinalIgnoreCase)) { problems.Add($"{label}: path/class in the target is {Key(w, t)}, expected {expect(w, i + 1)}"); continue; }
-            var (sc, _, so, sa) = EntryRefs(src, i);
-            var (wc, _, wo, wa) = EntryRefs(w, t - 1);
+            var (sc, ss, so, sa) = EntryRefs(src, i);
+            var (wc, ws, wo, wa) = EntryRefs(w, t - 1);
             bool Same(int a, int b) => (a == 0 ? "null" : expect(w, a)).Equals(Key(w, b), StringComparison.OrdinalIgnoreCase);
-            if (!Same(sc, wc) || !Same(so, wo) || !Same(sa, wa)) problems.Add($"{label}: class/outer/archetype don't match");
+            if (!Same(sc, wc) || !Same(so, wo) || !Same(sa, wa) || !Same(ss, ws)) problems.Add($"{label}: class/super/outer/archetype don't match");
             byte[] sd = src.ReadExportBytes(se), wd = w.ReadExportBytes(we);
             if (sd.Length != wd.Length) { problems.Add($"{label}: {wd.Length} bytes, source {sd.Length}"); continue; }
             List<Patch> wp;
-            try { wp = Parse(w, wd, w.ClassOf(we)); }
+            try { wp = Parse(w, wd, w.ClassOf(we), IsClassDefault(w, we)); }
             catch (Exception ex) when (ex is InvalidDataException or PackageFormatException) { problems.Add($"{label}: doesn't parse in the target: {ex.Message}"); continue; }
             var sp = patches[i];
             if (!sp.Select(x => (x.Offset, x.Kind)).SequenceEqual(wp.Select(x => (x.Offset, x.Kind)))) { problems.Add($"{label}: reference layout differs"); continue; }
