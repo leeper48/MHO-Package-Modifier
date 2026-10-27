@@ -395,6 +395,24 @@ static class ExportCopy
     /// </summary>
     public static Func<Package, byte[], int, string, List<NativeRef>?>? NativeHook { get; set; }
 
+    /// <summary>
+    /// Every object reference export <paramref name="index"/> holds, read with the copier's exact parser (properties, native
+    /// data, NativeHook), plus its class, super, outer and archetype: positive = export (1-based), negative = import. Null when
+    /// it doesn't parse (the Mod Manager's cleanup of an earlier build's leftovers then changes nothing). Read-only.
+    /// </summary>
+    internal static List<int>? ReferencesOf(Package pkg, int index)
+    {
+        var e = pkg.Exports[index];
+        byte[] d = pkg.ReadExportBytes(e);
+        List<Patch> list;
+        try { list = Parse(pkg, d, pkg.ClassOf(e), IsClassDefault(pkg, e)); }
+        catch (Exception ex) when (ex is InvalidDataException or PackageFormatException or ArgumentOutOfRangeException) { return null; }
+        var refs = list.Where(x => x.Kind == Kind.Object).Select(x => BinaryPrimitives.ReadInt32LittleEndian(d.AsSpan(x.Offset))).ToList();
+        var (cls, super, outer, arch) = EntryRefs(pkg, index);
+        refs.AddRange([cls, super, outer, arch]);
+        return [.. refs.Where(r => r != 0)];
+    }
+
     static readonly HashSet<string> ScriptProperties = new(StringComparer.OrdinalIgnoreCase) { "byteproperty", "structproperty", "objectproperty", "componentproperty",
         "arrayproperty", "interfaceproperty", "classproperty", "delegateproperty", "mapproperty", "boolproperty", "intproperty", "floatproperty", "nameproperty", "strproperty" };
 
