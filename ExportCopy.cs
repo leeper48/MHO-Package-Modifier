@@ -118,7 +118,10 @@ static class ExportCopy
                 continue;
             }
             int t = Array.FindIndex(dst.Exports, e => dst.PathOf(e).Equals(to, StringComparison.OrdinalIgnoreCase));
-            if (fRef == 0 || t < 0) { Console.WriteLine($"  --replace-ref {from}={to}: {(fRef == 0 ? "no such export or import in the source" : "no such export in the target")}"); return null; }
+            // (or an import of the target: a texture it takes from another package, Mod Manager's Copy Material Setup, 2.53.34)
+            int ti = t >= 0 ? -1 : Enumerable.Range(0, dst.Imports.Length).FirstOrDefault(i => Key(dst, -(i + 1)).Split('|')[0].Equals(to, StringComparison.OrdinalIgnoreCase), -1);
+            if (fRef == 0 || (t < 0 && ti < 0)) { Console.WriteLine($"  --replace-ref {from}={to}: {(fRef == 0 ? "no such export or import in the source" : "no such export or import in the target")}"); return null; }
+            if (ti >= 0) { replaced[fRef] = -(ti + 1); Console.WriteLine($"  replacing references to {from} with the target's import {to}"); continue; }
             replaced[fRef] = t + 1;
             Console.WriteLine($"  replacing references to {from} with the target's {to} ({dst.ClassOf(dst.Exports[t])})");
         }
