@@ -487,7 +487,9 @@ static class ExportCopy
         // from another hero copies them).
         // A class default's subobjects: a projectile's light environment and animated mesh (2.53.29: same header, checked with
         // --dump-export on Daredevil's Relentless Justice and Beast's Barrier Gadget; no native data)
-        bool templated = !classDefault && (c == "marvelentitycompsounds" || c.StartsWith("powerfx") || c.StartsWith("projectilefx")
+        // A condition's effect components (ConditionFxMeshAttachment …) too (2026-11-03: --dump-export reads Thing's Fantasticar
+        // car_attach and Hawkeye's skycycleattach with it; a borrowed vehicle is copied into a travel condition)
+        bool templated = !classDefault && (c == "marvelentitycompsounds" || c.StartsWith("powerfx") || c.StartsWith("projectilefx") || c.StartsWith("conditionfx")
             || c == "dynamiclightenvironmentcomponent" || c == "skeletalmeshcomponent");
         if (classDefault) component = false;
         if (component && c != "staticmeshcomponent" && !templated && !distribution) throw new InvalidDataException($"component class '{cls}' not supported");
