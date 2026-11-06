@@ -493,7 +493,9 @@ static class ExportCopy
         // --dump-export on Daredevil's Relentless Justice and Beast's Barrier Gadget; no native data)
         // A condition's effect components (ConditionFxMeshAttachment …) too (2026-11-03: --dump-export reads Thing's Fantasticar
         // car_attach and Hawkeye's skycycleattach with it; a borrowed vehicle is copied into a travel condition)
-        bool templated = !classDefault && (c == "marvelentitycompsounds" || c.StartsWith("powerfx") || c.StartsWith("projectilefx") || c.StartsWith("conditionfx")
+        // MHO's other entity components (MarvelEntityCompAnimationSimple: an animated projectile's, Colossus's thrown Wolverine;
+        // 2.53.38, checked with --dump-export) have the same header.
+        bool templated = !classDefault && (c.StartsWith("marvelentitycomp") || c.StartsWith("powerfx") || c.StartsWith("projectilefx") || c.StartsWith("conditionfx")
             || c == "dynamiclightenvironmentcomponent" || c == "skeletalmeshcomponent");
         if (classDefault) component = false;
         if (component && c != "staticmeshcomponent" && !templated && !distribution) throw new InvalidDataException($"component class '{cls}' not supported");
