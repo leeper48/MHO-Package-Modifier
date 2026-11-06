@@ -45,7 +45,7 @@ static class ExportCopy
     /// <summary>Arrays of floats (4 bytes each, nothing else): an AnimSequence's morph-target curves (curvedata: tagged structs
     /// { curvename, curveweights }) hold one weight per frame (Carnage's arm blades: 49 frames, 49 floats; checked 2026-10-03).</summary>
     static readonly HashSet<string> FloatArrays = new(StringComparer.OrdinalIgnoreCase) { "curveweights", "loddistances", "lookuptable" };
-    static readonly HashSet<string> ObjectArrays = new(StringComparer.OrdinalIgnoreCase) { "peffecttemplates", "expressions", "functionexpressions", "staticmeshcomponents", "materials", "sockets", "clothingassets", "audioemotes", "bantertargets", "bodysetup", "constraintsetup", "bodies", "constraints", "sequences", "metadata", "emitters", "lodlevels", "modules", "spawnmodules", "updatemodules", "meshmaterials", "defaultmaterials", "particlemoduleeventstosendtogame", "projectileclasses", "attachmentstoshowonactivate", "attachmentstohideonactivate", "animsetstoadd", "components", "modelmesh", "animationset", "animsets", "modelphysicsasset" };   // (2.53.32: a skeletal mesh component's AnimSets: Spider-Man's webbing)   // (2.53.29: a class default's component list; an attachment class's meshes)   // (2.53.27: a thrown car's projectile classes; the Thing's cart attachments)   // AnimSet: its AnimSequences; AnimSequence: its AnimMetaData objects   // SkeletalMesh: its sockets and clothing assets; PhysicsAsset: bodysetup / constraintsetup; PhysicsAssetInstance: bodies / constraints (checked with --dump-export)
+    static readonly HashSet<string> ObjectArrays = new(StringComparer.OrdinalIgnoreCase) { "peffecttemplates", "expressions", "functionexpressions", "staticmeshcomponents", "materials", "sockets", "clothingassets", "audioemotes", "bantertargets", "bodysetup", "constraintsetup", "bodies", "constraints", "sequences", "metadata", "emitters", "lodlevels", "modules", "spawnmodules", "updatemodules", "meshmaterials", "defaultmaterials", "particlemoduleeventstosendtogame", "projectileclasses", "attachmentstoshowonactivate", "attachmentstohideonactivate", "animsetstoadd", "components", "modelmesh", "animationset", "animsets", "modelphysicsasset", "morphset", "morphsets", "targets" };   // (2.53.37: a mesh component's MorphSets and a MorphTargetSet's Targets: Mr. Fantastic as the Thing's mallet)   // (2.53.32: a skeletal mesh component's AnimSets: Spider-Man's webbing)   // (2.53.29: a class default's component list; an attachment class's meshes)   // (2.53.27: a thrown car's projectile classes; the Thing's cart attachments)   // AnimSet: its AnimSequences; AnimSequence: its AnimMetaData objects   // SkeletalMesh: its sockets and clothing assets; PhysicsAsset: bodysetup / constraintsetup; PhysicsAssetInstance: bodies / constraints (checked with --dump-export)
 
     public static int Run(string srcPath, string exportName, string dstPath, IReadOnlyCollection<string> cut, bool dryRun,
         string? rename = null, IReadOnlyDictionary<string, string>? replaceRefs = null)
@@ -534,6 +534,27 @@ static class ExportCopy
         // APEX cloth (a cape's ApexClothingAsset): a few properties, then APEX's own serialized asset (NxParameterized binary:
         // bone names as text, no package names or references), copied as it is (MHO Hero Creator's finding).
         else if (c == "apexclothingasset") { }
+        // Morph targets (2.53.37: Mr. Fantastic as the Thing's mallet): a MorphTargetSet's native data is one empty array (4 zero
+        // bytes; its Targets and BaseSkelMesh are properties); a MorphTarget's is vertex data only: a LOD count, then per LOD a
+        // vertex count, 20 bytes a vertex (position delta, packed normal delta, base-mesh vertex index) and the base mesh's
+        // vertex count. Numbers only, checked to end exactly.
+        else if (c == "morphtargetset")
+        {
+            if (d.Length - p != 4 || I32(d, p) != 0) throw new InvalidDataException("morph target set native data isn't the empty 4-byte array");
+        }
+        else if (c == "morphtarget")
+        {
+            int q = p, lods = d.Length - q >= 4 ? I32(d, q) : -1; q += 4;
+            if (lods < 0 || lods > 16) throw new InvalidDataException("morph target: bad LOD count");
+            for (int l = 0; l < lods; l++)
+            {
+                if (d.Length - q < 4) throw new InvalidDataException("morph target: cut short");
+                int n = I32(d, q); q += 4;
+                if (n < 0 || (long)n * 20 > d.Length - q - 4) throw new InvalidDataException("morph target: bad vertex count");
+                q += n * 20 + 4;   // the vertices, then NumBaseMeshVerts
+            }
+            if (q != d.Length) throw new InvalidDataException($"morph target native data doesn't end where its LODs do ({d.Length - q} bytes left)");
+        }
         // An animation (AnimSequence): after its properties the raw tracks (count; per track a count of 12-byte positions and a
         // count of 16-byte rotations; empty once compressed) and the compressed key stream (count, bytes): numbers only, as
         // AnimExportCli's reader reads them. Checked to end exactly (Mod Manager's animation swap, 2026-10-02).
