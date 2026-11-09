@@ -26,7 +26,8 @@ static class CellPlaceholders
         IReadOnlyList<float[]> excludeBoxes, float? groundZ, float groundMargin, float shrink, IReadOnlyList<string> addFbx,
         string meshName = "sm_skysphere", string micName = "m_procedural_sky_daytime", bool fromLive = false, float lift = 0, Vector3 offset = default, IReadOnlyList<string>? alwaysFbx = null,
         string? wallMaterial = null, float wallUv = 512f, string? componentTemplate = null, string? topMaterial = null, float topUv = 512f,
-        string? texturedFbx = null, string? texturedMaterial = null, float? texturedZ = null, IReadOnlyList<(string Fbx, string Material)>? lods = null, float lodInset = 1f, float lodDrop = 0f, float lodShrink = 0f, IReadOnlyList<float[]>? lodExcludeBoxes = null)
+        string? texturedFbx = null, string? texturedMaterial = null, float? texturedZ = null, IReadOnlyList<(string Fbx, string Material)>? lods = null, float lodInset = 1f, float lodDrop = 0f, float lodShrink = 0f, IReadOnlyList<float[]>? lodExcludeBoxes = null, bool lodByTriangle = false, bool lodTwoSided = false, float texturedDrop = 0f,
+        string? waterBoxes = null, string? waterMaterial = null, float waterZ = 0f, float waterGrid = 4608f, float waterUv = 2304f, bool noSky = false)
     {
         upkPath = Path.GetFullPath(upkPath);
         if (Program.IsBackupName(upkPath)) { Console.WriteLine("Refusing to write a .bak/copy file."); return 2; }
@@ -253,16 +254,35 @@ static class CellPlaceholders
         var textured = new List<(string Fbx, string? Material, float? Z, float MinDraw)>();
         if (texturedFbx != null) textured.Add((texturedFbx, texturedMaterial, texturedZ, 0f));
         foreach (var (lf, lm) in lods ?? []) textured.Add((lf, lm, null, minDrawDistance));
+        // --water-boxes x0,y0,x1,y1[,z];... --water-material pkg.mat (Kurt 2026-11-08: water without touching the sky): flat
+        // boxes as a mesh and component of their own, always drawn, split into a vertex grid (--water-grid: translucent water
+        // is fogged per vertex) and tiled every --water-uv units like the cells' filler. --add-sky-placeholders puts the same
+        // boxes into the sky sphere instead, which ties them to the sky dome.
+        if (waterBoxes != null) textured.Add(("@water", waterMaterial, null, 0f));
         foreach (var (tFbx, tMaterial, tZ, texturedMinDraw) in textured)
         {
             int tmRef = Array.FindIndex(live.Exports, e => live.PathOf(e).Equals(tMaterial ?? "", StringComparison.OrdinalIgnoreCase)
                 && live.ClassOf(e).StartsWith("MaterialInstance", StringComparison.OrdinalIgnoreCase)) + 1;
             if (tmRef == 0 || tmRef > n0) { Console.WriteLine($"  --textured-material: no material instance '{tMaterial}' among the package's existing exports"); return 1; }
             var tp = new List<Vector3>(); var tn = new List<Vector3>(); var tuv = new List<Vector2>(); var ti = new List<int>();
-            foreach (var sct in FbxMeshReader.Read(tFbx, 1))
+            if (tFbx == "@water")
+            {
+                foreach (string b in waterBoxes!.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    var v = b.Split(',').Select(x => float.Parse(x, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+                    if (v.Length is not (4 or 5)) { Console.WriteLine($"  --water-boxes: '{b}' isn't x0,y0,x1,y1[,z]"); return 1; }
+                    SkyPlaceholders.Quad(tp, tn, ti, 1f, v.Length == 5 ? v[4] : waterZ, v[0], v[1], v[2], v[3], waterGrid);
+                }
+                float half = waterUv / 2;
+                tuv.AddRange(tp.Select(q => new Vector2((q.X + half) / waterUv, (q.Y + half) / waterUv)));
+            }
+            else foreach (var sct in FbxMeshReader.Read(tFbx, 1))
             {
                 int b = tp.Count;
-                tp.AddRange(sct.Positions.Select(q => tZ is float z ? new Vector3(q.X, q.Y, z) : q));
+                // --textured-drop D (Midtown, 2026-11-09): the always-drawn mesh D under its own surface (a baked ground that
+                // stays at every distance, just below the real ground)
+                float drop = tFbx == texturedFbx && tMaterial == texturedMaterial && texturedMinDraw == 0 ? texturedDrop : 0f;
+                tp.AddRange(sct.Positions.Select(q => tZ is float z ? new Vector3(q.X, q.Y, z) : new Vector3(q.X, q.Y, q.Z - drop)));
                 tn.AddRange(sct.Normals); tuv.AddRange(sct.TexCoords[0]); ti.AddRange(sct.Indices.Select(i => i + b));
             }
             if (ti.Count == 0) { Console.WriteLine($"  --textured-fbx: no triangles in {tFbx}"); return 1; }
@@ -276,6 +296,16 @@ static class CellPlaceholders
                 Vector3 l0 = tp.Aggregate(Vector3.Min), l1 = tp.Aggregate(Vector3.Max), mid = (l0 + l1) / 2;
                 for (int v = 0; v < tp.Count; v++)
                     tp[v] = new Vector3(mid.X + (tp[v].X - mid.X) * lodInset, mid.Y + (tp[v].Y - mid.Y) * lodInset, l0.Z + (tp[v].Z - l0.Z) * lodInset - lodDrop);
+            }
+            // --lod-two-sided (Midtown, 2026-11-09): every triangle also as a reversed copy (its own vertices, normals turned),
+            // so faces a bake left facing inward still show (the game draws only front faces; Blender draws both, so they
+            // looked right there). LOD materials are unlit, so the copies can't shade wrong.
+            if (texturedMinDraw > 0 && lodTwoSided)
+            {
+                int vb = tp.Count, ib = ti.Count;
+                tp.AddRange(tp.Take(vb).ToList()); tn.AddRange(tn.Take(vb).Select(q => -q).ToList()); tuv.AddRange(tuv.Take(vb).ToList());
+                for (int t = 0; t < ib; t += 3) { ti.Add(ti[t] + vb); ti.Add(ti[t + 2] + vb); ti.Add(ti[t + 1] + vb); }
+                Console.WriteLine($"  --lod-two-sided: {ib / 3:N0} triangles also reversed");
             }
             // Over 16-bit indices (65,535 vertices): split into several meshes (same material and placement), in triangle
             // order, each under the limit — e.g. a whole-zone LOD bundle part.
@@ -310,6 +340,9 @@ static class CellPlaceholders
                 {
                     int r = Find(ti[t]); var c = (islandLo[r] + islandHi[r]) / 2;
                     if (lodExcludeBoxes?.Any(b => c.X >= b[0] && c.X <= b[2] && c.Y >= b[1] && c.Y <= b[3]) == true) { dropped.Add(r); continue; }
+                    // --lod-by-triangle (Midtown, 2026-11-09): each triangle goes to the cell of its own centre, so a large piece (a
+                    // street's ground spanning many cells) isn't hidden whole while one cell of it is near the player.
+                    if (lodByTriangle) c = (tp[ti[t]] + tp[ti[t + 1]] + tp[ti[t + 2]]) / 3;
                     var cell = ((int)MathF.Floor(c.X / cellSize), (int)MathF.Floor(c.Y / cellSize));
                     if (!byCell.TryGetValue(cell, out var list)) byCell[cell] = list = [];
                     list.Add(t);
@@ -352,7 +385,10 @@ static class CellPlaceholders
         }
 
         // Collection actor: the sky component plus the new ones.
-        byte[] actorBytes = BuildActor(bak, actor, tw, compRefs);
+        // --no-sky (Kurt 2026-11-08: no sky changes): the sky sphere's component taken off the list, so the dome isn't drawn;
+        // it and its mesh stay in the package as the boxes' template.
+        byte[] actorBytes = BuildActor(bak, actor, tw, compRefs, noSky ? skyComp + 1 : 0);
+        if (noSky) Console.WriteLine($"  --no-sky: {bak.PathOf(bak.Exports[skyComp])} taken off the actor's list (not drawn)");
         replace[actor] = _ => actorBytes;
 
         // Sky sphere: its own section, plus the ground plane if asked for.
@@ -426,13 +462,14 @@ static class CellPlaceholders
     }
 
     /// <summary>The collection actor with its StaticMeshComponents list extended.</summary>
-    internal static byte[] BuildActor(Package pkg, int actor, TagWriter tw, IReadOnlyList<int> newComponents)
+    /// <param name="drop">A component reference to take off the list (0 = none).</param>
+    internal static byte[] BuildActor(Package pkg, int actor, TagWriter tw, IReadOnlyList<int> newComponents, int drop = 0)
     {
         byte[] src = pkg.ReadExportBytes(pkg.Exports[actor]);
         var tags = TagWalker.Walk(pkg, src, 4) ?? throw new InvalidDataException("collection actor's properties don't parse");
         var list = tags.FirstOrDefault(t => t.Name.Equals("StaticMeshComponents", StringComparison.OrdinalIgnoreCase)) ?? throw new InvalidDataException("collection actor has no StaticMeshComponents");
         int count = BinaryPrimitives.ReadInt32LittleEndian(src.AsSpan(list.ValueAt));
-        var refs = Enumerable.Range(0, count).Select(i => BinaryPrimitives.ReadInt32LittleEndian(src.AsSpan(list.ValueAt + 4 + 4 * i))).Concat(newComponents).ToList();
+        var refs = Enumerable.Range(0, count).Select(i => BinaryPrimitives.ReadInt32LittleEndian(src.AsSpan(list.ValueAt + 4 + 4 * i))).Where(r => drop == 0 || r != drop).Concat(newComponents).ToList();
         using var ms = new MemoryStream();
         ms.Write(src, 0, 4);
         foreach (var t in tags)

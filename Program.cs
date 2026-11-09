@@ -125,15 +125,21 @@ static class Program
             return 0;
         }
 
+        int plAt = Array.FindIndex(args, a => a.Equals("--placed-objects", StringComparison.OrdinalIgnoreCase));
+        if (plAt >= 0 && plAt + 2 < args.Length) return MeshInstances.ListPlaced(args[plAt + 1], args[plAt + 2]);
         int instAt = Array.FindIndex(args, a => a.Equals("--add-mesh-instances", StringComparison.OrdinalIgnoreCase));
         if (instAt >= 0)
         {
-            // --add-mesh-instances <package.upk> <source.upk> <mesh[,mesh...]> --template <component-path> [--min-draw 3500] [--z-offset dz] [--dry-run]
+            // --add-mesh-instances <package.upk> <source.upk> <mesh[,mesh...]> --template <component-path> [--min-draw 3500] [--z-offset dz] [--material from=to ...] [--dry-run]
             string IOpt(string name, string fallback) { int i = Array.FindIndex(args, a => a.Equals(name, StringComparison.OrdinalIgnoreCase)); return i >= 0 && i + 1 < args.Length ? args[i + 1] : fallback; }
             if (instAt + 3 >= args.Length || IOpt("--template", "").Length == 0) { Usage(); return 2; }
             var inv = System.Globalization.CultureInfo.InvariantCulture;
             return MeshInstances.Run(args[instAt + 1], args[instAt + 2], args[instAt + 3].Split(',', StringSplitOptions.RemoveEmptyEntries), IOpt("--template", ""),
-                float.Parse(IOpt("--min-draw", "3500"), inv), float.Parse(IOpt("--z-offset", "0"), inv), args.Any(a => a.Equals("--dry-run", StringComparison.OrdinalIgnoreCase)));
+                float.Parse(IOpt("--min-draw", "3500"), inv), float.Parse(IOpt("--z-offset", "0"), inv), args.Any(a => a.Equals("--dry-run", StringComparison.OrdinalIgnoreCase)),
+                args.Select((a, i) => (a, i)).Where(x => x.a.Equals("--material", StringComparison.OrdinalIgnoreCase) && x.i + 1 < args.Length)
+                    .Select(x => args[x.i + 1].Split('=', 2)).Where(p => p.Length == 2).Select(p => (p[0], p[1])).ToList(),
+                float.Parse(IOpt("--inset", "1"), inv), args.Any(a => a.Equals("--skip-missing", StringComparison.OrdinalIgnoreCase)),
+                args.Any(a => a.Equals("--lit", StringComparison.OrdinalIgnoreCase)));
         }
 
         int expPlAt = Array.FindIndex(args, a => a.Equals("--export-placements", StringComparison.OrdinalIgnoreCase));
@@ -228,8 +234,10 @@ static class Program
             int wi = Array.FindIndex(args, a => a.Equals("--walls", StringComparison.OrdinalIgnoreCase));
             var walls = wi >= 0 && wi + 1 < args.Length && args[wi + 1].Equals("grey", StringComparison.OrdinalIgnoreCase) ? ZoneBuilds.Walls.Grey : ZoneBuilds.Walls.Facade;
             int li = Array.FindIndex(args, a => a.Equals("--lod-size", StringComparison.OrdinalIgnoreCase));
+            string? Opt(string name) { int i = Array.FindIndex(args, a => a.Equals(name, StringComparison.OrdinalIgnoreCase)); return i >= 0 && i + 1 < args.Length ? args[i + 1] : null; }
             return ZoneBuilds.Build(args[buildZoneAt + 1], args[buildZoneAt + 2], walls, args.Any(a => a.Equals("--dry-run", StringComparison.OrdinalIgnoreCase)),
-                li >= 0 && li + 1 < args.Length ? int.Parse(args[li + 1]) : 512);
+                li >= 0 && li + 1 < args.Length ? int.Parse(args[li + 1]) : 512,
+                basePath: Opt("--base"), lodOnly: args.Any(a => a.Equals("--lod-only", StringComparison.OrdinalIgnoreCase)), outPath: Opt("--out"));
         }
 
         int importAt = Array.FindIndex(args, a => a.Equals("--import-fbx", StringComparison.OrdinalIgnoreCase));
@@ -280,10 +288,17 @@ static class Program
                 texturedFbx: Opt("--textured-fbx", "") is { Length: > 0 } tf ? tf : null,
                 texturedMaterial: Opt("--textured-material", "") is { Length: > 0 } tmat ? tmat : null,
                 texturedZ: Opt("--textured-z", "") is { Length: > 0 } tz ? float.Parse(tz, inv) : null,
+                texturedDrop: float.Parse(Opt("--textured-drop", "0"), inv),
                 lods: Multi("--lod").Select(l => l.Split('=', 2)).Where(l => l.Length == 2).Select(l => (l[0], l[1])).ToList(),
                 lodInset: float.Parse(Opt("--lod-inset", "1"), inv), lodDrop: float.Parse(Opt("--lod-drop", "0"), inv),
                 lodShrink: float.Parse(Opt("--lod-shrink", "0"), inv),
-                lodExcludeBoxes: Multi("--lod-exclude-box").Select(b => b.Split(',').Select(v => float.Parse(v, inv)).ToArray()).Where(b => b.Length == 4).ToList());
+                lodExcludeBoxes: Multi("--lod-exclude-box").Select(b => b.Split(',').Select(v => float.Parse(v, inv)).ToArray()).Where(b => b.Length == 4).ToList(),
+                lodByTriangle: args.Any(a => a.Equals("--lod-by-triangle", StringComparison.OrdinalIgnoreCase)),
+                lodTwoSided: args.Any(a => a.Equals("--lod-two-sided", StringComparison.OrdinalIgnoreCase)),
+                waterBoxes: Opt("--water-boxes", "") is { Length: > 0 } wb ? wb : null,
+                waterMaterial: Opt("--water-material", "") is { Length: > 0 } wmat ? wmat : null,
+                waterZ: float.Parse(Opt("--water-z", "0"), inv), waterGrid: float.Parse(Opt("--water-grid", "4608"), inv), waterUv: float.Parse(Opt("--water-uv", "2304"), inv),
+                noSky: args.Any(a => a.Equals("--no-sky", StringComparison.OrdinalIgnoreCase)));
         }
 
         int matAt = Array.FindIndex(args, a => a.Equals("--material-params", StringComparison.OrdinalIgnoreCase));

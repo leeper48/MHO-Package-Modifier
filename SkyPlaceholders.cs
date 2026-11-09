@@ -299,7 +299,7 @@ static class SkyPlaceholders
     /// (water) get their fog per vertex, so a huge quad with far-away corners is fogged differently from a thin one
     /// whose corners are near the player, and the boxes show as bands (Industry City, 2026-09-25).
     /// </summary>
-    static void Quad(List<Vector3> pos, List<Vector3> nrm, List<int> idx, float scale, float z, float x0, float y0, float x1, float y1, float grid = 0f)
+    internal static void Quad(List<Vector3> pos, List<Vector3> nrm, List<int> idx, float scale, float z, float x0, float y0, float x1, float y1, float grid = 0f)
     {
         int nx = grid > 0 ? Math.Max(1, (int)MathF.Ceiling((x1 - x0) / grid)) : 1, ny = grid > 0 ? Math.Max(1, (int)MathF.Ceiling((y1 - y0) / grid)) : 1;
         int b = pos.Count;

@@ -47,6 +47,7 @@ static class PlacedExport
         var texWritten = new Dictionary<string, string>();
         var report = new List<string>();
         int placedCount = 0, kept = 0, skippedSections = 0;
+        var unresolved = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);   // material imports found in no package we read
 
         // Resolve a material reference seen in package p to (package, export index, path).
         (Package Pkg, int Index, string Path)? Material(Package p, int r)
@@ -56,8 +57,12 @@ static class PlacedExport
             {
                 var parts2 = new List<string>();
                 for (int guard = 0; r < 0 && guard < 16; guard++) { var im = p.Imports[-r - 1]; parts2.Insert(0, im.ObjectName); r = im.OuterIndex; }
+                // An import's outer can be an export (a forced-export package object in the tile): its path is the prefix.
+                if (r > 0) parts2.Insert(0, p.PathOf(p.Exports[r - 1]));
                 string path = string.Join('.', parts2);
-                return libByPath.TryGetValue(path, out int li) ? (library, li, path) : null;
+                if (libByPath.TryGetValue(path, out int li)) return (library, li, path);
+                unresolved[path] = unresolved.GetValueOrDefault(path) + 1;
+                return null;
             }
             return null;
         }
@@ -200,6 +205,7 @@ static class PlacedExport
             File.WriteAllText(Path.Combine(outDir, Path.GetFileNameWithoutExtension(outFbx) + "_layers.txt"), string.Join(Environment.NewLine + Environment.NewLine, report) + Environment.NewLine);
         using var ctx = new AssimpContext();
         if (!ctx.ExportFile(scene, outFbx, "fbx")) throw new IOException($"Assimp could not write {outFbx}");
+        foreach (var (up, un) in unresolved.OrderByDescending(x => x.Value)) Console.WriteLine($"  unresolved material: {up} ({un} section(s))");
         if (skippedSections > 0) Console.WriteLine($"  {skippedSections:N0} section(s) left out by --skip-material [{string.Join(", ", skipMaterials!)}]");
         Console.WriteLine($"  {kept:N0} of {placedCount:N0} placed meshes kept; {scene.MeshCount} material(s), {parts.Values.Sum(p => p.Mesh.FaceCount):N0} tris; {texWritten.Values.Count(v => v.Length > 0)} texture(s) in {texFolder}");
         Console.WriteLine($"Wrote {outFbx}");

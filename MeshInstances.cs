@@ -16,7 +16,49 @@ static class MeshInstances
 {
     static readonly byte[] EmptyLighting = [1, 0, 0, 0, .. new byte[17]];
 
-    public static int Run(string upkPath, string srcPath, IReadOnlyList<string> meshNames, string templatePath, float minDraw, float zOffset, bool dryRun)
+    /// <summary>
+    /// --placed-objects (Midtown's real-geometry LOD test, 2026-11-09): every mesh and component material the tile's visible
+    /// placements use, once each, with the package that holds it ("tile", "library", or "?" when it's an import from
+    /// somewhere else): what --copy-export must bring into a level before --add-mesh-instances "*".
+    /// </summary>
+    public static int ListPlaced(string tilePath, string libraryPath)
+    {
+        var src = Package.Open(tilePath);
+        var lib = Package.Open(libraryPath);
+        var libPaths = new HashSet<string>(lib.Exports.Select(e => lib.PathOf(e)), StringComparer.OrdinalIgnoreCase);
+        string SrcPath(int r)
+        {
+            if (r > 0) return src.PathOf(src.Exports[r - 1]);
+            var parts = new List<string>();
+            for (int guard = 0; r < 0 && guard < 16; guard++) { var im = src.Imports[-r - 1]; parts.Insert(0, im.ObjectName); r = im.OuterIndex; }
+            if (r > 0) parts.Insert(0, src.PathOf(src.Exports[r - 1]));
+            return string.Join('.', parts);
+        }
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        void Emit(string kind, int r)
+        {
+            string p = SrcPath(r);
+            if (!seen.Add(p)) return;
+            string where = r > 0 ? "tile" : libPaths.Contains(p) ? "library" : "?";
+            Console.WriteLine($"{kind}\t{where}\t{p}");
+        }
+        foreach (var e in src.Exports)
+        {
+            if (!src.ClassOf(e).Equals("StaticMeshComponent", StringComparison.OrdinalIgnoreCase)) continue;
+            byte[] d = src.ReadExportBytes(e);
+            var c = ComponentTransform.Read(src, d);
+            if (c == null || c.MeshRef == 0 || c.HiddenGame) continue;
+            Emit("mesh", c.MeshRef);
+            var tags = TagWalker.Walk(src, d, 8);
+            var mt = tags?.FirstOrDefault(x => x.Name.Equals("Materials", StringComparison.OrdinalIgnoreCase));
+            if (mt == null) continue;
+            int n = BinaryPrimitives.ReadInt32LittleEndian(d.AsSpan(mt.ValueAt));
+            for (int k = 0; k < n; k++) { int mr = BinaryPrimitives.ReadInt32LittleEndian(d.AsSpan(mt.ValueAt + 4 + 4 * k)); if (mr != 0) Emit("material", mr); }
+        }
+        return 0;
+    }
+
+    public static int Run(string upkPath, string srcPath, IReadOnlyList<string> meshNames, string templatePath, float minDraw, float zOffset, bool dryRun, IReadOnlyList<(string From, string To)>? swap = null, float inset = 1f, bool skipMissing = false, bool lit = false)
     {
         upkPath = Path.GetFullPath(upkPath);
         if (Program.IsBackupName(upkPath)) { Console.WriteLine("Refusing to write a .bak/copy file."); return 2; }
@@ -46,6 +88,7 @@ static class MeshInstances
         var ttags = TagWalker.Walk(pkg, tsrc, 8) ?? throw new InvalidDataException("template component properties don't parse");
 
         var add = new List<NewExport>();
+        var insetCentre = new Dictionary<int, Vector3?>();
         var refs = new List<int>();
         var expect = new List<(int Mesh, Vector3 T, Vector3 R, Vector3 S)>();
         foreach (var e in src.Exports)
@@ -55,7 +98,8 @@ static class MeshInstances
             var c = ComponentTransform.Read(src, d);
             if (c == null || c.MeshRef == 0 || c.HiddenGame) continue;
             string meshName = src.RefName(c.MeshRef);
-            if (!meshNames.Any(m => m.Equals(meshName, StringComparison.OrdinalIgnoreCase))) continue;
+            // "*" = every placed mesh (Midtown's real-geometry LOD test, 2026-11-09)
+            if (!meshNames.Any(m => m == "*" || m.Equals(meshName, StringComparison.OrdinalIgnoreCase))) continue;
             Vector3 t = c.Translation, r = c.Rotation, s = c.Scale;
             if (e.OuterIndex > 0 && src.ClassOf(src.Exports[e.OuterIndex - 1]) is string oc && oc.EndsWith("Actor", StringComparison.OrdinalIgnoreCase)
                 && !oc.Equals("StaticMeshCollectionActor", StringComparison.OrdinalIgnoreCase)
@@ -66,11 +110,33 @@ static class MeshInstances
             }
             t.Z += zOffset;
             string meshPath = SrcPath(c.MeshRef);
-            if (!byPath.TryGetValue(meshPath, out int meshRef)) { Console.WriteLine($"  mesh {meshPath} isn't in the target (copy it first with --copy-export)"); return 1; }
+            if (!byPath.TryGetValue(meshPath, out int meshRef))
+            {
+                // --skip-missing: a placement whose mesh or material wasn't copied is left out instead of stopping (Midtown's real-geometry test)
+                if (skipMissing) { Console.WriteLine($"  skipped: mesh {meshPath} isn't in the target"); continue; }
+                Console.WriteLine($"  mesh {meshPath} isn't in the target (copy it first with --copy-export)"); return 1;
+            }
+            // --inset F: scaled by F about the mesh's own bounds centre, so the copy sits just inside the real piece
+            if (inset != 1f)
+            {
+                if (!insetCentre.TryGetValue(meshRef, out var ctr))
+                {
+                    // a mesh the reader can't parse keeps its size (Midtown: one Bank tile piece)
+                    try { var sm = StaticMesh.Read(pkg, pkg.Exports[meshRef - 1]); ctr = (sm.Positions.Aggregate(Vector3.Min) + sm.Positions.Aggregate(Vector3.Max)) / 2; }
+                    catch (PackageFormatException) { ctr = null; Console.WriteLine($"  {meshName}: not read, kept at full size"); }
+                    insetCentre[meshRef] = ctr;
+                }
+                if (ctr is Vector3 cc)
+                {
+                    t += Vector3.Transform(cc * s, ZonePlaceholders.RotatorMatrix(r)) * (1 - inset);
+                    s *= inset;
+                }
+            }
             // Materials: the source component's list, each found in the target by path.
             var stags = TagWalker.Walk(src, d, 8);
             var mtag = stags?.FirstOrDefault(x => x.Name.Equals("Materials", StringComparison.OrdinalIgnoreCase));
             var mats = new List<int>();
+            bool missing = false;
             if (mtag != null)
             {
                 int n = BinaryPrimitives.ReadInt32LittleEndian(d.AsSpan(mtag.ValueAt));
@@ -79,11 +145,18 @@ static class MeshInstances
                     int mr = BinaryPrimitives.ReadInt32LittleEndian(d.AsSpan(mtag.ValueAt + 4 + 4 * k));
                     if (mr == 0) { mats.Add(0); continue; }
                     string mp = SrcPath(mr);
-                    if (!byPath.TryGetValue(mp, out int dm)) { Console.WriteLine($"  material {mp} isn't in the target (copy it first with --copy-export)"); return 1; }
+                    // --material from=to: the copy uses another material (Odin's Palace: the live rainbow instead of the dead one).
+                    if (swap?.FirstOrDefault(x => x.From.Equals(mp, StringComparison.OrdinalIgnoreCase)) is { To: { } to }) mp = to;
+                    if (!byPath.TryGetValue(mp, out int dm))
+                    {
+                        if (skipMissing) { Console.WriteLine($"  skipped a {meshName}: material {mp} isn't in the target"); missing = true; break; }
+                        Console.WriteLine($"  material {mp} isn't in the target (copy it first with --copy-export)"); return 1;
+                    }
                     mats.Add(dm);
                 }
             }
 
+            if (missing) continue;
             using var ms = new MemoryStream();
             ms.Write(tsrc, 0, 8);
             foreach (var tg in ttags)
@@ -93,6 +166,9 @@ static class MeshInstances
                     case "staticmesh": ms.Write(tw.Tag("StaticMesh", "ObjectProperty", null, BitConverter.GetBytes(meshRef))); break;
                     case "materials": if (mats.Count > 0) ms.Write(tw.Tag("Materials", "ArrayProperty", null, [.. BitConverter.GetBytes(mats.Count), .. mats.SelectMany(BitConverter.GetBytes)])); break;
                     case "translation" or "rotation" or "scale3d" or "scale" or "visibilityid" or "vertexpositionversionnumber" or "mindrawdistance": break;
+                    // --lit (Midtown's real-geometry test): the sky template's "no dynamic lights" left out, so the copies (no
+                    // lightmap of their own) take the zone's sun as dynamic light, as characters do
+                    case "bacceptsdynamiclights" or "bacceptsdynamicdominantlightshadows" when lit: break;
                     default: ms.Write(tsrc, tg.Start, tg.End - tg.Start); break;
                 }
             }

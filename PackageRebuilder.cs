@@ -235,8 +235,9 @@ static class PackageRebuilder
         int r = pkg.DependsOffset;
         for (int i = 0; i < n; i++) r += 4 + 4 * BinaryPrimitives.ReadInt32LittleEndian(b.AsSpan(r));
         Need(r == pkg.TotalHeaderSize, "depends table doesn't end at TotalHeaderSize");
-        Need(BinaryPrimitives.ReadInt32LittleEndian(b.AsSpan(pkg.ImportExportGuidsAt)) == pkg.TotalHeaderSize
-             && BinaryPrimitives.ReadInt32LittleEndian(b.AsSpan(pkg.ImportExportGuidsAt + 4)) == 0
+        // (empty = both counts 0; the offset isn't checked: another mod tool grew MichaelMerc's Asgard_Hub_B / MidTown_Static
+        // headers and left it at the stock header size, 2026-11-08. The rebuild writes the new header size there.)
+        Need(BinaryPrimitives.ReadInt32LittleEndian(b.AsSpan(pkg.ImportExportGuidsAt + 4)) == 0
              && BinaryPrimitives.ReadInt32LittleEndian(b.AsSpan(pkg.ImportExportGuidsAt + 8)) == 0, "ImportExportGuids not empty");
         Need(BinaryPrimitives.ReadInt32LittleEndian(b.AsSpan(pkg.ThumbnailTableAt)) == 0, "thumbnail table present");
         Need(pkg.Exports.All(e => e.SerialSize == 0 || e.SerialOffset >= pkg.TotalHeaderSize), "export data inside the header");
