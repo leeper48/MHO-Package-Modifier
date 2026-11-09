@@ -26,7 +26,7 @@ static class CellPlaceholders
         IReadOnlyList<float[]> excludeBoxes, float? groundZ, float groundMargin, float shrink, IReadOnlyList<string> addFbx,
         string meshName = "sm_skysphere", string micName = "m_procedural_sky_daytime", bool fromLive = false, float lift = 0, Vector3 offset = default, IReadOnlyList<string>? alwaysFbx = null,
         string? wallMaterial = null, float wallUv = 512f, string? componentTemplate = null, string? topMaterial = null, float topUv = 512f,
-        string? texturedFbx = null, string? texturedMaterial = null, float? texturedZ = null, IReadOnlyList<(string Fbx, string Material)>? lods = null, float lodInset = 1f, float lodDrop = 0f, float lodShrink = 0f, IReadOnlyList<float[]>? lodExcludeBoxes = null, bool lodByTriangle = false, bool lodTwoSided = false, float texturedDrop = 0f,
+        string? texturedFbx = null, string? texturedMaterial = null, float? texturedZ = null, IReadOnlyList<(string Fbx, string Material)>? lods = null, float lodInset = 1f, float lodDrop = 0f, float lodShrink = 0f, IReadOnlyList<float[]>? lodExcludeBoxes = null, bool lodByTriangle = false, bool lodTwoSided = false, float lodCell = 0f, float texturedDrop = 0f,
         string? waterBoxes = null, string? waterMaterial = null, float waterZ = 0f, float waterGrid = 4608f, float waterUv = 2304f, bool noSky = false)
     {
         upkPath = Path.GetFullPath(upkPath);
@@ -343,7 +343,11 @@ static class CellPlaceholders
                     // --lod-by-triangle (Midtown, 2026-11-09): each triangle goes to the cell of its own centre, so a large piece (a
                     // street's ground spanning many cells) isn't hidden whole while one cell of it is near the player.
                     if (lodByTriangle) c = (tp[ti[t]] + tp[ti[t + 1]] + tp[ti[t + 2]]) / 3;
-                    var cell = ((int)MathF.Floor(c.X / cellSize), (int)MathF.Floor(c.Y / cellSize));
+                    // --lod-cell N (Midtown, 2026-11-09): a finer grid for LOD pieces. On the 2304 grid a building at a cell's corner
+                    // is ~1600 from its piece's centre, so its LOD hid (min draw 1200 to that centre) while the player was still
+                    // over 2000 from it, before the real building streamed in.
+                    float lc = lodCell > 0 ? lodCell : cellSize;
+                    var cell = ((int)MathF.Floor(c.X / lc), (int)MathF.Floor(c.Y / lc));
                     if (!byCell.TryGetValue(cell, out var list)) byCell[cell] = list = [];
                     list.Add(t);
                 }

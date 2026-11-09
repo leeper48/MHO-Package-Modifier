@@ -41,11 +41,10 @@ static class ZoneBuilds
             "Midtown free roam (day): Kurt's baked LOD of the 36 UES_Static tiles (one piece per cell, drawn from 2500 away). LOD only: build it with --lod-only on the Walls mod's MidTown_Static.",
             MidtownSteps, HasFacade: false, LodOnly: true),
         new("MidtownFull", "MidTown_Static.upk",
-            "Midtown test (2026-11-09): the LOD baked with no reduction at all, one tile column per part (6 + ground), 4096 atlases. LOD only.",
+            "Midtown (2026-11-09): the LOD baked with no reduction at all, one tile column per part (X5 in halves + ground), 4096 atlases, pieces on a 768 grid. LOD only.",
             MidtownFullSteps, HasFacade: false, LodOnly: true),
-        // Tighter atlas layout tests (2026-11-09): 8 parts (X5 in two halves: as one piece it baked 94 % black), 2048 or 4096
-        new("MidtownTight2048", "MidTown_Static.upk", "Midtown test: tight atlas layout, 2048 atlases. LOD only.", (w, l) => MidtownFullSteps(w, l, 8), HasFacade: false, LodOnly: true),
-        new("MidtownTight4096", "MidTown_Static.upk", "Midtown test: tight atlas layout, 4096 atlases. LOD only.", (w, l) => MidtownFullSteps(w, l, 8), HasFacade: false, LodOnly: true),
+        // Tighter atlas layouts (2026-11-09, 2048 / 4096, 6 px island margins) looked patchy in game (DXT blocks bleed between
+        // islands): dropped. The parts_full bake (X5 in two halves: as one piece it baked 94 % black) is the Zone LODs' Midtown.
     ];
 
     /// <summary>
@@ -139,7 +138,9 @@ static class ZoneBuilds
                 "--exclude-box", "-200000,-200000,200000,200000", "--lod-shrink", "6", "--lod-drop", "4",
                 // The random middle block (two rows of 3 cells that swap between seeds): no building LOD there, or a
                 // swapped run would show warehouses in the wrong row. The ground plane still covers it.
-                "--lod-exclude-box", "2304,-1152,9216,3456"],
+                "--lod-exclude-box", "2304,-1152,9216,3456",
+                // LOD pieces on a 768 grid (2026-11-09, as Midtown): on the 2304 grid a building near a cell's corner hid early
+                "--lod-cell", "768"],
             // Water: the stock harbour water is terrain_flat_filler at -116 in the cells (removed from those tiles with
             // --remove-components, 2026-09-25), so two layers just under it (-121, -126: translucent, reads as depth), with
             // a hole over the two AIM Sub cells, which keep their own pit water at -205.
@@ -235,7 +236,9 @@ static class ZoneBuilds
     static string[][] OdinsPalaceBake(string actor) => Bake("odin", ["--component-template", actor + ".staticmeshactor_smc_0",
         // The Bifrost corridor (x 1664..2176, y -5632..128): the copied deck is the bridge there. The bake's own
         // bridge came out near black (the rainbow material has no colour texture to bake) and flickered under it.
-        "--lod-exclude-box", "1600,-5700,2240,200"]);
+        "--lod-exclude-box", "1600,-5700,2240,200",
+        // LOD pieces on a 768 grid (2026-11-09, as Midtown): on the 2304 grid a building near a cell's corner hid early
+        "--lod-cell", "768"]);
 
     /// <summary>
     /// Kurt's baked LOD (one object, one atlas: ZoneData/&lt;zone&gt;/lod_bundle1.fbx + lod_bundle1_diff.png) as Industry City's
@@ -304,7 +307,8 @@ static class ZoneBuilds
         // leaves, bark) left out of the export
         // then (Kurt): the ground never disappears (always drawn, 8 under the real ground; it now takes every piece under 100 that
         // isn't a building), an asphalt-grey plane under the whole zone at -40 as a backstop, fountain water left out
-        .. Bake("midtown", ["--lod-by-triangle",
+        // then (Kurt): a building mid-right hid too early: LOD pieces on a 768 grid (--lod-cell), each centred near its building
+        .. Bake("midtown", ["--lod-by-triangle", "--lod-cell", "768",
                 "--water-boxes", "-8000,-9000,22000,23000", "--water-material", "madripoor_hitown_buildings.midtown_lod_asphalt_mat",
                 "--water-z", "-40", "--water-grid", "4608", "--water-uv", "512"],
             parts: parts, minDraw: "1200", brightness: "0.9", groundDrop: "8",

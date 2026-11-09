@@ -295,6 +295,7 @@ static class Program
                 lodExcludeBoxes: Multi("--lod-exclude-box").Select(b => b.Split(',').Select(v => float.Parse(v, inv)).ToArray()).Where(b => b.Length == 4).ToList(),
                 lodByTriangle: args.Any(a => a.Equals("--lod-by-triangle", StringComparison.OrdinalIgnoreCase)),
                 lodTwoSided: args.Any(a => a.Equals("--lod-two-sided", StringComparison.OrdinalIgnoreCase)),
+                lodCell: float.Parse(Opt("--lod-cell", "0"), inv),
                 waterBoxes: Opt("--water-boxes", "") is { Length: > 0 } wb ? wb : null,
                 waterMaterial: Opt("--water-material", "") is { Length: > 0 } wmat ? wmat : null,
                 waterZ: float.Parse(Opt("--water-z", "0"), inv), waterGrid: float.Parse(Opt("--water-grid", "4608"), inv), waterUv: float.Parse(Opt("--water-uv", "2304"), inv),
