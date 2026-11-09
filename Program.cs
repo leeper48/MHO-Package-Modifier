@@ -236,7 +236,7 @@ static class Program
             int li = Array.FindIndex(args, a => a.Equals("--lod-size", StringComparison.OrdinalIgnoreCase));
             string? Opt(string name) { int i = Array.FindIndex(args, a => a.Equals(name, StringComparison.OrdinalIgnoreCase)); return i >= 0 && i + 1 < args.Length ? args[i + 1] : null; }
             return ZoneBuilds.Build(args[buildZoneAt + 1], args[buildZoneAt + 2], walls, args.Any(a => a.Equals("--dry-run", StringComparison.OrdinalIgnoreCase)),
-                li >= 0 && li + 1 < args.Length ? int.Parse(args[li + 1]) : 512,
+                li >= 0 && li + 1 < args.Length ? int.Parse(args[li + 1]) : 0,
                 basePath: Opt("--base"), lodOnly: args.Any(a => a.Equals("--lod-only", StringComparison.OrdinalIgnoreCase)), outPath: Opt("--out"));
         }
 

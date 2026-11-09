@@ -493,9 +493,9 @@ sealed partial class MainForm : Form
         t.Controls.Add(zones, 0, 1);
         t.Controls.Add(zoneInfo, 0, 2);
         lodSize.Items.AddRange(["Original", "2048", "1024", "512", "256"]);
-        lodSize.SelectedItem = "512";
+        lodSize.SelectedItem = "Original";
         t.Controls.Add(Flow(Lbl("Walls:"), wallsFacade, wallsGrey, Lbl("   LOD Textures:"), lodSize), 0, 3);
-        tips.SetToolTip(lodSize, "Largest size for the distant LOD textures (building atlases, baked ground plane). They're only seen far away: 512 keeps the package small. Original = as supplied.");
+        tips.SetToolTip(lodSize, "Largest size for the distant LOD textures (building atlases, baked ground plane). Original = as supplied (default: Kurt found Industry City's 2048 atlases crisper than 512, 2026-11-09); a smaller size keeps the package small.");
         tips.SetToolTip(wallsFacade, "Building walls use the zone's own facade texture (Hightown: generated night windows). Roofs stay grey.");
         tips.SetToolTip(wallsGrey, "Building boxes are flat grey all over (the original placeholder look).");
         t.Controls.Add(Flow(

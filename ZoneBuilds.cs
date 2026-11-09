@@ -19,7 +19,7 @@ static class ZoneBuilds
     public sealed record Zone(string Name, string Package, string Description, Func<Walls, bool, List<string[]>> Steps, bool HasFacade = true, bool LodOnly = false);
 
     const string Target = "@target", Data = "@data/";
-    const string LodSize = "@lodsize";                                  // --max-size for LOD textures: --lod-size / the Zones tab (default 512, 0 = original)
+    const string LodSize = "@lodsize";                                  // --max-size for LOD textures: --lod-size / the Zones tab (default 0 = original; 2048 read crisper than 512 in game)
     const string Library = "@lib:";                                     // a game package, read from its .bak if one exists
 
     public static readonly Zone[] Zones =
