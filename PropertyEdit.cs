@@ -4,7 +4,7 @@ using System.Globalization;
 namespace MhoPackageModifier;
 
 /// <summary>
-/// --set-property: change the value of a float, int, Color or LinearColor property that already exists in
+/// --set-property: change the value of a bool, float, int, Color or LinearColor property that already exists in
 /// an export's tagged-property block. Same size, so only the value bytes change; the export is still re-appended
 /// through PackageWriter and written with the .bak / verify / swap workflow. Properties at their default
 /// value are omitted by UE3 and can't be set this way (adding a tag isn't supported yet).
@@ -46,6 +46,14 @@ static class PropertyEdit
                     Console.WriteLine($"  {name}: {BinaryPrimitives.ReadSingleLittleEndian(edited.AsSpan(prop.ValueAt))} -> {f}");
                     BinaryPrimitives.WriteSingleLittleEndian(edited.AsSpan(prop.ValueAt), f);
                     break;
+                case "boolproperty":
+                {
+                    bool? bv = value.ToLowerInvariant() switch { "true" or "1" or "on" => true, "false" or "0" or "off" => false, _ => null };
+                    if (bv is null) { Console.WriteLine($"  '{value}' isn't true or false."); return 1; }
+                    Console.WriteLine($"  {name}: {(edited[prop.ValueAt - 1] != 0 ? "true" : "false")} -> {(bv.Value ? "true" : "false")}");
+                    edited[prop.ValueAt - 1] = (byte)(bv.Value ? 1 : 0);
+                    break;
+                }
                 case "intproperty" when prop.Size == 4:
                     if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int n)) { Console.WriteLine($"  '{value}' isn't an integer."); return 1; }
                     Console.WriteLine($"  {name}: {BinaryPrimitives.ReadInt32LittleEndian(edited.AsSpan(prop.ValueAt))} -> {n}");
@@ -71,7 +79,7 @@ static class PropertyEdit
                     break;
                 }
                 default:
-                    Console.WriteLine($"  '{name}' is a {prop.Type} {prop.Inner} (size {prop.Size}); only float, int, Color and LinearColor are supported so far."); return 1;
+                    Console.WriteLine($"  '{name}' is a {prop.Type} {prop.Inner} (size {prop.Size}); only bool, float, int, Color and LinearColor are supported so far."); return 1;
             }
         }
 
@@ -192,30 +200,48 @@ static class PropertyEdit
     }
 
     /// <summary>Top-level properties by name, trying the plain (byte 4) and MHO component (byte 8) layouts.</summary>
+    // Properties start at 4 or 8 in most objects; actors placed in a level have a longer header (a Daily Bugle
+    // PostProcessVolume's start at 26), so later starts are tried after those, up to 96 (as ComponentTransform.ReadActor).
+    // Tagged structs' own properties are added as "<struct>.<property>" (e.g. settings.benabledof).
     static Dictionary<string, Prop>? Locate(Package pkg, byte[] d)
     {
-        foreach (int start in new[] { 4, 8 })
+        foreach (int start in new[] { 4, 8 }.Concat(Enumerable.Range(9, 88)))
         {
             var result = new Dictionary<string, Prop>(StringComparer.OrdinalIgnoreCase);
-            int p = start;
-            try
-            {
-                for (int guard = 0; guard < 4096; guard++)
-                {
-                    string name = Name(pkg, d, ref p);
-                    if (name.Equals("None", StringComparison.OrdinalIgnoreCase)) return result;
-                    string type = Name(pkg, d, ref p).ToLowerInvariant();
-                    int size = BitConverter.ToInt32(d, p), arrayIndex = BitConverter.ToInt32(d, p + 4); p += 8;
-                    string inner = type is "structproperty" or "byteproperty" ? Name(pkg, d, ref p) : "";
-                    if (type == "boolproperty") p += 1;
-                    if (size < 0 || p + size > d.Length) break;
-                    if (arrayIndex == 0) result.TryAdd(name, new Prop(type, size, p, inner));
-                    p += size;
-                }
-            }
-            catch (Exception ex) when (ex is PackageFormatException or ArgumentOutOfRangeException) { }
+            if (Walk(pkg, d, start, d.Length, "", result)) return result;
         }
         return null;
+    }
+
+    static bool Walk(Package pkg, byte[] d, int p, int end, string prefix, Dictionary<string, Prop> result)
+    {
+        try
+        {
+            for (int guard = 0; guard < 4096; guard++)
+            {
+                string name = Name(pkg, d, ref p);
+                if (name.Equals("None", StringComparison.OrdinalIgnoreCase)) return p <= end;
+                string type = Name(pkg, d, ref p).ToLowerInvariant();
+                if (!type.EndsWith("property")) return false;
+                int size = BitConverter.ToInt32(d, p), arrayIndex = BitConverter.ToInt32(d, p + 4); p += 8;
+                string inner = type is "structproperty" or "byteproperty" ? Name(pkg, d, ref p) : "";
+                if (type == "boolproperty") p += 1;
+                if (size < 0 || p + size > end) return false;
+                if (arrayIndex == 0)
+                {
+                    result.TryAdd(prefix + name, new Prop(type, size, p, inner));
+                    if (type == "structproperty" && size >= 8)
+                    {
+                        var nested = new Dictionary<string, Prop>(StringComparer.OrdinalIgnoreCase);
+                        if (Walk(pkg, d, p, p + size, prefix + name + ".", nested))
+                            foreach (var (k, v) in nested) result.TryAdd(k, v);
+                    }
+                }
+                p += size;
+            }
+        }
+        catch (Exception ex) when (ex is PackageFormatException or ArgumentOutOfRangeException) { }
+        return false;
     }
 
     static string Name(Package pkg, byte[] d, ref int p)
