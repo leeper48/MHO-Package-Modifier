@@ -139,7 +139,7 @@ static class Program
                 args.Select((a, i) => (a, i)).Where(x => x.a.Equals("--material", StringComparison.OrdinalIgnoreCase) && x.i + 1 < args.Length)
                     .Select(x => args[x.i + 1].Split('=', 2)).Where(p => p.Length == 2).Select(p => (p[0], p[1])).ToList(),
                 float.Parse(IOpt("--inset", "1"), inv), args.Any(a => a.Equals("--skip-missing", StringComparison.OrdinalIgnoreCase)),
-                args.Any(a => a.Equals("--lit", StringComparison.OrdinalIgnoreCase)));
+                args.Any(a => a.Equals("--lit", StringComparison.OrdinalIgnoreCase)), IOpt("--library", "") is { Length: > 0 } ilib ? ilib : null);
         }
 
         int expPlAt = Array.FindIndex(args, a => a.Equals("--export-placements", StringComparison.OrdinalIgnoreCase));

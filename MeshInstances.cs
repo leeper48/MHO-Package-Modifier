@@ -58,7 +58,8 @@ static class MeshInstances
         return 0;
     }
 
-    public static int Run(string upkPath, string srcPath, IReadOnlyList<string> meshNames, string templatePath, float minDraw, float zOffset, bool dryRun, IReadOnlyList<(string From, string To)>? swap = null, float inset = 1f, bool skipMissing = false, bool lit = false)
+    public static int Run(string upkPath, string srcPath, IReadOnlyList<string> meshNames, string templatePath, float minDraw, float zOffset, bool dryRun, IReadOnlyList<(string From, string To)>? swap = null, float inset = 1f, bool skipMissing = false, bool lit = false,
+        string? libraryPath = null)
     {
         upkPath = Path.GetFullPath(upkPath);
         if (Program.IsBackupName(upkPath)) { Console.WriteLine("Refusing to write a .bak/copy file."); return 2; }
@@ -84,6 +85,56 @@ static class MeshInstances
 
         var names = pkg.Names.Any(n => n.Equals("MinDrawDistance", StringComparison.OrdinalIgnoreCase)) ? new List<string>() : ["MinDrawDistance"];
         var tw = new TagWriter(pkg, names);
+
+        // --library <lib.upk> (2026-11-11, the Shipping Yard's tile-carried LOD): a mesh or material that isn't in the target but is
+        // in the region library is imported by its path, as the tiles import the library's own meshes (a chain of Package imports,
+        // then the object). The library is loaded before the tiles, so the import resolves.
+        var addImports = new List<NewImport>();
+        Package? lib = libraryPath != null ? Package.Open(libraryPath) : null;
+        var libByPath = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        if (lib != null) for (int i = 0; i < lib.Exports.Length; i++) libByPath.TryAdd(lib.PathOf(lib.Exports[i]), i + 1);
+        string TargetImportPath(int r)
+        {
+            var parts = new List<string>();
+            for (int guard = 0; r < 0 && guard < 16; guard++) { var im = pkg.Imports[-r - 1]; parts.Insert(0, im.ObjectName); r = im.OuterIndex; }
+            return r > 0 ? pkg.PathOf(pkg.Exports[r - 1]) + "." + string.Join('.', parts) : string.Join('.', parts);
+        }
+        var importByPath = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < pkg.Imports.Length; i++) importByPath.TryAdd(TargetImportPath(-(i + 1)), -(i + 1));
+        void EnsureName(string n) { if (!pkg.Names.Any(x => x.Equals(n, StringComparison.OrdinalIgnoreCase)) && !names.Any(x => x.Equals(n, StringComparison.OrdinalIgnoreCase))) names.Add(n); }
+        // a name stored with a number (x_3 = "x", number 4) unless the library has the whole text as a name
+        (string Name, int Number) Split(string objectName)
+        {
+            int us = objectName.LastIndexOf('_');
+            if (lib != null && us > 0 && int.TryParse(objectName[(us + 1)..], out int n) && n >= 0 && objectName[(us + 1)..] == n.ToString()
+                && !lib.Names.Any(x => x.Equals(objectName, StringComparison.OrdinalIgnoreCase)))
+                return (objectName[..us], n + 1);
+            return (objectName, 0);
+        }
+        int ImportFromLibrary(string path)
+        {
+            if (importByPath.TryGetValue(path, out int have)) return have;
+            int li = libByPath[path];
+            var e = lib!.Exports[li - 1];
+            int outer = 0;
+            if (e.OuterIndex > 0) outer = ImportFromLibrary(lib.PathOf(lib.Exports[e.OuterIndex - 1]));
+            string cls = lib.ClassOf(e);
+            string clsPkg = e.ClassIndex < 0 && lib.Imports[-e.ClassIndex - 1].OuterIndex < 0 ? lib.Imports[-lib.Imports[-e.ClassIndex - 1].OuterIndex - 1].ObjectName
+                : cls.Equals("Package", StringComparison.OrdinalIgnoreCase) ? "Core" : "Engine";
+            var (name, number) = Split(e.ObjectName);
+            foreach (string n in new[] { clsPkg, cls, name }) EnsureName(n);
+            addImports.Add(new NewImport(clsPkg, cls, outer, name, number));
+            int r = -(pkg.Imports.Length + addImports.Count);
+            importByPath[path] = r;
+            Console.WriteLine($"  import {cls} {path} (from {Path.GetFileName(libraryPath)})");
+            return r;
+        }
+        bool Find(string path, out int r)
+        {
+            if (byPath.TryGetValue(path, out r)) return true;
+            if (lib != null && libByPath.ContainsKey(path)) { r = ImportFromLibrary(path); return true; }
+            return false;
+        }
         byte[] tsrc = pkg.ReadExportBytes(pkg.Exports[template]);
         var ttags = TagWalker.Walk(pkg, tsrc, 8) ?? throw new InvalidDataException("template component properties don't parse");
 
@@ -110,7 +161,9 @@ static class MeshInstances
             }
             t.Z += zOffset;
             string meshPath = SrcPath(c.MeshRef);
-            if (!byPath.TryGetValue(meshPath, out int meshRef))
+            // --material from=to swaps meshes too (the Shipping Yard's LOD meshes renamed in the library, 2026-11-11)
+            if (swap?.FirstOrDefault(x => x.From.Equals(meshPath, StringComparison.OrdinalIgnoreCase)) is { To: { } meshTo }) meshPath = meshTo;
+            if (!Find(meshPath, out int meshRef))
             {
                 // --skip-missing: a placement whose mesh or material wasn't copied is left out instead of stopping (Midtown's real-geometry test)
                 if (skipMissing) { Console.WriteLine($"  skipped: mesh {meshPath} isn't in the target"); continue; }
@@ -147,7 +200,7 @@ static class MeshInstances
                     string mp = SrcPath(mr);
                     // --material from=to: the copy uses another material (Odin's Palace: the live rainbow instead of the dead one).
                     if (swap?.FirstOrDefault(x => x.From.Equals(mp, StringComparison.OrdinalIgnoreCase)) is { To: { } to }) mp = to;
-                    if (!byPath.TryGetValue(mp, out int dm))
+                    if (!Find(mp, out int dm))
                     {
                         if (skipMissing) { Console.WriteLine($"  skipped a {meshName}: material {mp} isn't in the target"); missing = true; break; }
                         Console.WriteLine($"  material {mp} isn't in the target (copy it first with --copy-export)"); return 1;
@@ -190,10 +243,10 @@ static class MeshInstances
 
         byte[] actorBytes = CellPlaceholders.BuildActor(pkg, actor, tw, refs);
         var replace = new Dictionary<int, Func<long, byte[]>> { [actor] = _ => actorBytes };
-        byte[] output = PackageRebuilder.Rebuild(pkg, replace, add, out var written, names);
+        byte[] output = PackageRebuilder.Rebuild(pkg, replace, add, out var written, names, addImports);
         List<string> Check(byte[] bytes)
         {
-            var problems = PackageRebuilder.Verify(pkg, bytes, [actor], add, written, names);
+            var problems = PackageRebuilder.Verify(pkg, bytes, [actor], add, written, names, addImports);
             var w = Package.FromBytes(bytes);
             for (int k = 0; k < refs.Count; k++)
             {

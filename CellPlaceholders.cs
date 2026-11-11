@@ -288,10 +288,13 @@ static class CellPlaceholders
             if (ti.Count == 0) { Console.WriteLine($"  --textured-fbx: no triangles in {tFbx}"); return 1; }
             // --lod-shrink D: every vertex D units in along its normal (works for a whole-zone bundle; the inset scales about
             // the mesh's centre, which only suits a single building).
-            if (texturedMinDraw > 0 && lodShrink != 0f)
+            // (an always-drawn LOD part too, not the ground: the Shipping Yard's tile-carried LOD, 2026-11-11, which without the
+            // shrink sat on the real geometry and z-fought with it)
+            bool lodPart = texturedMinDraw > 0 || !(tFbx == texturedFbx && tMaterial == texturedMaterial) && tFbx != "@water";
+            if (lodPart && lodShrink != 0f)
                 for (int v = 0; v < tp.Count; v++)
                     if (tn[v].LengthSquared() > 1e-6f) tp[v] -= Vector3.Normalize(tn[v]) * lodShrink;
-            if (texturedMinDraw > 0 && (lodInset != 1f || lodDrop != 0f))
+            if (lodPart && (lodInset != 1f || lodDrop != 0f))
             {
                 Vector3 l0 = tp.Aggregate(Vector3.Min), l1 = tp.Aggregate(Vector3.Max), mid = (l0 + l1) / 2;
                 for (int v = 0; v < tp.Count; v++)

@@ -296,7 +296,11 @@ static class ZoneBuilds
         .. MidtownSkyline.Select(t => new[] { "--replace-texture", Target, "skymod_midtown_static." + t, Data + "skymod/" + t + ".png", "--format", "dxt1", "--scale", "0.75" }),
     ];
     /// <summary>Midtown test B (Kurt's compromise, 2026-11-09): parts_full/bake_part.py with no reduction (no dissolve either),
-    /// ground + one part per tile column X0..X5 (4096 atlases), window glass pixels made sky blue before baking.</summary>
+    /// ground + one part per tile column X0..X5 (4096 atlases), window glass pixels made sky blue before baking.
+    /// 2026-11-11 (Kurt): the building atlases' solid dark glass panes repainted with a sky-blue (top) to dark (bottom) gradient,
+    /// "up" taken from the LOD meshes (publish/exports/MidTown_Static/window_fix: window_gradient.py), and one building
+    /// (x 9431, y 2957) back to its original dark (restore_building.py). The unlit LOD can't show the real glass's
+    /// angle-dependent reflection; the gradient stands in for it.</summary>
     static List<string[]> MidtownFullSteps(Walls walls, bool lodOnly) => MidtownFullSteps(walls, lodOnly, 7);
     static List<string[]> MidtownFullSteps(Walls walls, bool lodOnly, int parts) =>
     [

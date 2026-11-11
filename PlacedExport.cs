@@ -99,6 +99,10 @@ static class PlacedExport
                     meshes[key] = mesh;
                 }
                 if (mesh == null) continue;
+                // The component's own painted vertex colours (OverrideVertexColors in its LOD record: a 1-byte flag, stride 4,
+                // vertex count, element size 4, count, then B G R A per vertex), which win over the mesh's (Shipping Yard
+                // 2026-11-11: the dock floors' texture blend lives there; the mesh has no colours).
+                byte[]? overrideBgra = OverrideColors(d, mesh.Positions.Length);
                 var m = ZonePlaceholders.RotatorMatrix(rot);
                 var w = mesh.Positions.Select(v => Vector3.Transform(v * sc, m) + t + tileOffset + offset).ToArray();
                 Vector3 lo = w.Aggregate(Vector3.Min), hi = w.Aggregate(Vector3.Max);
@@ -176,7 +180,7 @@ static class PlacedExport
                         part.Mesh.Vertices.Add(new Vector3D(w[v].X, w[v].Z, w[v].Y));
                         // Vertex colours (stored B, G, R, A) -> the FBX colour set; white where a mesh has none, so a merged
                         // material mesh keeps one colour channel throughout.
-                        var col = mesh.ColorsBgra is { } cb && v * 4 + 3 < cb.Length
+                        var col = (overrideBgra ?? mesh.ColorsBgra) is { } cb && v * 4 + 3 < cb.Length
                             ? new Color4D(cb[v * 4 + 2] / 255f, cb[v * 4 + 1] / 255f, cb[v * 4] / 255f, cb[v * 4 + 3] / 255f) : new Color4D(1, 1, 1, 1);
                         part.Mesh.VertexColorChannels[0].Add(col);
                         Vector2 uv = mesh.TexCoords[0][v];
@@ -210,5 +214,19 @@ static class PlacedExport
         Console.WriteLine($"  {kept:N0} of {placedCount:N0} placed meshes kept; {scene.MeshCount} material(s), {parts.Values.Sum(p => p.Mesh.FaceCount):N0} tris; {texWritten.Values.Count(v => v.Length > 0)} texture(s) in {texFolder}");
         Console.WriteLine($"Wrote {outFbx}");
         return 0;
+    }
+
+    /// <summary>A component's OverrideVertexColors (B G R A per vertex), found by its header: a 1-byte flag 1, then int32 stride 4,
+    /// the vertex count, element size 4 and the count again; null when the component has none for this mesh.</summary>
+    static byte[]? OverrideColors(byte[] d, int vertexCount)
+    {
+        if (vertexCount <= 0) return null;
+        for (int i = 8; i + 17 + 4 * vertexCount <= d.Length; i++)
+        {
+            if (d[i] != 1 || BitConverter.ToInt32(d, i + 1) != 4 || BitConverter.ToInt32(d, i + 5) != vertexCount
+                || BitConverter.ToInt32(d, i + 9) != 4 || BitConverter.ToInt32(d, i + 13) != vertexCount) continue;
+            return d.AsSpan(i + 17, 4 * vertexCount).ToArray();
+        }
+        return null;
     }
 }
