@@ -156,7 +156,10 @@ static class TextureImport
             {
                 ms.Write(I(0)); ms.Write(I(px.Length)); ms.Write(I(px.Length)); ms.Write(I(checked((int)(offset + ms.Position + 4))));
                 ms.Write(px);
-                ms.Write(I(w)); ms.Write(I(h));
+                // (each side at least 4, one DXT block, as the game's own textures list their last mips: a 2 x 2 or 1 x 1 level
+                // made the game create a 1 x 1 DXT1 texture when it dropped mips of a small one, and Direct3D refused it: a crash,
+                // Kurt 2026-11-10 on an 8 x 8 glow stand-in)
+                ms.Write(I(Math.Max(4, w))); ms.Write(I(Math.Max(4, h)));
             }
             ms.Write(tail);
             return ms.ToArray();
@@ -180,7 +183,7 @@ static class TextureImport
                     var m = ti.Mips[k];
                     if (!ti.Data.AsSpan(m.InlineAt, m.Size).SequenceEqual(img.Levels[k].Pixels)) problems.Add($"mip {k}: pixels differ from the .dds");
                     if (m.Offset != e.SerialOffset + m.InlineAt) problems.Add($"mip {k}: offset doesn't point at its data");
-                    if (m.Width != img.Levels[k].W || m.Height != img.Levels[k].H) problems.Add($"mip {k}: size wrong");
+                    if (m.Width != Math.Max(4, img.Levels[k].W) || m.Height != Math.Max(4, img.Levels[k].H)) problems.Add($"mip {k}: size wrong");
                 }
             if (!string.IsNullOrEmpty(ti.Cache)) problems.Add($"has a texture cache '{ti.Cache}'");
         }
