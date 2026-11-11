@@ -91,7 +91,10 @@ static class ExportCopy
         // the source's path in memory); everything inside it follows. --replace-ref: references to these source objects
         // point at existing target objects instead, and the source objects aren't copied (e.g. swap one texture).
         string rootPath = src.PathOf(src.Exports[root]);
-        string newRootPath = rename == null ? rootPath : (rootPath.Contains('.') ? rootPath[..(rootPath.LastIndexOf('.') + 1)] : "") + rename;
+        // (the outer's path, not the text before the last dot: an object name can hold a dot, Wizzer's Professor X idle
+        // "professorx.idle", 2026-11-10)
+        int rootOuter = src.Exports[root].OuterIndex;
+        string newRootPath = rename == null ? rootPath : (rootOuter > 0 ? src.PathOf(src.Exports[rootOuter - 1]) + "." : "") + rename;
         var replaced = new Dictionary<int, int>();             // source reference -> target reference
         foreach (var (from, to) in replaceRefs ?? new Dictionary<string, string>())
         {
