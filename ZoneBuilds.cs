@@ -43,6 +43,9 @@ static class ZoneBuilds
         new("MidtownFull", "MidTown_Static.upk",
             "Midtown (2026-11-09): the LOD baked with no reduction at all, one tile column per part (X5 in halves + ground), 4096 atlases, pieces on a 768 grid. LOD only.",
             MidtownFullSteps, HasFacade: false, LodOnly: true),
+        new("MidtownGround3", "MidTown_Static.upk",
+            "Midtown test (2026-11-11, Kurt's option A): MidtownFull's buildings with the ground in three atlases (tile columns X0-1, X2-3, X4-5), each laid out and painted by us (no texels shared between different pieces). LOD only.",
+            (w, l) => MidtownFullSteps(w, l, 9, groundParts: 3, groundShrink: "6"), HasFacade: false, LodOnly: true),
         // Tighter atlas layouts (2026-11-09, 2048 / 4096, 6 px island margins) looked patchy in game (DXT blocks bleed between
         // islands): dropped. The parts_full bake (X5 in two halves: as one piece it baked 94 % black) is the Zone LODs' Midtown.
     ];
@@ -248,7 +251,7 @@ static class ZoneBuilds
     /// <paramref name="prefix"/> names the new objects (prefix_lod_…); <paramref name="extra"/> goes on the cells step.
     /// </summary>
     static string[][] Bake(string prefix, string[] extra, string shrink = "6", string drop = "4", int parts = 1, string minDraw = "2500", string brightness = "0.6",
-        string? groundDrop = null, string[]? beforeCells = null)
+        string? groundDrop = null, string[]? beforeCells = null, int groundParts = 1, string? groundShrink = null)
     {
         const string template = "maptemplates.sky.t_udk_sky_cloudmask01";
         const string sf = "madripoor_hitown_buildings.madripoor_hitown_storefront_a";
@@ -271,7 +274,10 @@ static class ZoneBuilds
         if (beforeCells != null) steps.Add(beforeCells);
         steps.Add(["--add-cell-placeholders", Target, Data + "raster.fbx", "--from-live", "--min-draw", minDraw,
             .. (groundDrop != null ? new[] { "--textured-fbx", Data + "lod_bundle1.fbx", "--textured-material", $"madripoor_hitown_buildings.{prefix}_lod_bundle1_mat", "--textured-drop", groundDrop } : []),
-            .. Enumerable.Range(groundDrop != null ? 2 : 1, groundDrop != null ? parts - 1 : parts).SelectMany(n => new[] { "--lod", Data + $"lod_bundle{n}.fbx=madripoor_hitown_buildings.{prefix}_lod_bundle{n}_mat" }),
+            .. (groundDrop != null && groundShrink != null ? new[] { "--textured-shrink", groundShrink } : []),
+            // groundParts > 1 (Midtown 2026-11-11): the ground in several atlases, bundles 1..groundParts all always drawn
+            .. (groundDrop != null ? Enumerable.Range(2, groundParts - 1).SelectMany(n => new[] { "--textured-more", Data + $"lod_bundle{n}.fbx=madripoor_hitown_buildings.{prefix}_lod_bundle{n}_mat" }) : []),
+            .. Enumerable.Range(groundDrop != null ? groundParts + 1 : 1, groundDrop != null ? parts - groundParts : parts).SelectMany(n => new[] { "--lod", Data + $"lod_bundle{n}.fbx=madripoor_hitown_buildings.{prefix}_lod_bundle{n}_mat" }),
             "--exclude-box", "-200000,-200000,200000,200000", "--lod-shrink", shrink, "--lod-drop", drop, .. extra]);
         return [.. steps];
     }
@@ -302,7 +308,7 @@ static class ZoneBuilds
     /// (x 9431, y 2957) back to its original dark (restore_building.py). The unlit LOD can't show the real glass's
     /// angle-dependent reflection; the gradient stands in for it.</summary>
     static List<string[]> MidtownFullSteps(Walls walls, bool lodOnly) => MidtownFullSteps(walls, lodOnly, 7);
-    static List<string[]> MidtownFullSteps(Walls walls, bool lodOnly, int parts) =>
+    static List<string[]> MidtownFullSteps(Walls walls, bool lodOnly, int parts, int groundParts = 1, string? groundShrink = null) =>
     [
         ["--import-texture", Target, "maptemplates.sky.t_udk_sky_cloudmask01", "midtown_lod_asphalt", Data + "asphalt.png", "--format", "dxt1", "--scale", "0.9"],
         // Kurt (Full Bake test): darker / warmer than the zone and a gap before the real tiles came in: 0.75 (and the atlases
@@ -315,7 +321,7 @@ static class ZoneBuilds
         .. Bake("midtown", ["--lod-by-triangle", "--lod-cell", "768",
                 "--water-boxes", "-8000,-9000,22000,23000", "--water-material", "madripoor_hitown_buildings.midtown_lod_asphalt_mat",
                 "--water-z", "-40", "--water-grid", "4608", "--water-uv", "512"],
-            parts: parts, minDraw: "1200", brightness: "0.9", groundDrop: "8",
+            parts: parts, minDraw: "1200", brightness: "0.9", groundDrop: "8", groundParts: groundParts, groundShrink: groundShrink,
             beforeCells: ["--copy-export", Library + "SCS__DailyRHighTownInvasionRegionL30_SF.upk", "madripoor_hitown_buildings.madripoor_hitown_storefront_a_mat", Target,
                 "--cut", "physmaterial", "--rename", "midtown_lod_asphalt_mat",
                 "--replace-ref", "madripoor_hitown_buildings.madripoor_hitown_storefront_a_diff=maptemplates.sky.midtown_lod_asphalt",

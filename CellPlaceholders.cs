@@ -26,7 +26,7 @@ static class CellPlaceholders
         IReadOnlyList<float[]> excludeBoxes, float? groundZ, float groundMargin, float shrink, IReadOnlyList<string> addFbx,
         string meshName = "sm_skysphere", string micName = "m_procedural_sky_daytime", bool fromLive = false, float lift = 0, Vector3 offset = default, IReadOnlyList<string>? alwaysFbx = null,
         string? wallMaterial = null, float wallUv = 512f, string? componentTemplate = null, string? topMaterial = null, float topUv = 512f,
-        string? texturedFbx = null, string? texturedMaterial = null, float? texturedZ = null, IReadOnlyList<(string Fbx, string Material)>? lods = null, float lodInset = 1f, float lodDrop = 0f, float lodShrink = 0f, IReadOnlyList<float[]>? lodExcludeBoxes = null, bool lodByTriangle = false, bool lodTwoSided = false, float lodCell = 0f, float texturedDrop = 0f,
+        string? texturedFbx = null, string? texturedMaterial = null, float? texturedZ = null, IReadOnlyList<(string Fbx, string Material)>? lods = null, float lodInset = 1f, float lodDrop = 0f, float lodShrink = 0f, IReadOnlyList<float[]>? lodExcludeBoxes = null, bool lodByTriangle = false, bool lodTwoSided = false, float lodCell = 0f, float texturedDrop = 0f, IReadOnlyList<(string Fbx, string Material)>? texturedMore = null, float texturedShrink = 0f,
         string? waterBoxes = null, string? waterMaterial = null, float waterZ = 0f, float waterGrid = 4608f, float waterUv = 2304f, bool noSky = false)
     {
         upkPath = Path.GetFullPath(upkPath);
@@ -251,15 +251,18 @@ static class CellPlaceholders
         // --lod-inset F / --lod-drop Z: the LOD shrunk toward its centre (x/y about the middle, height about its base)
         // and lowered, so it sits just inside the real building: where ICP's cells are still drawn past 3500 the two
         // coincided and z-fought (flicker, 2026-09-26).
-        var textured = new List<(string Fbx, string? Material, float? Z, float MinDraw)>();
-        if (texturedFbx != null) textured.Add((texturedFbx, texturedMaterial, texturedZ, 0f));
-        foreach (var (lf, lm) in lods ?? []) textured.Add((lf, lm, null, minDrawDistance));
+        // --textured-more fbx=material (repeatable, Midtown 2026-11-11): more always-drawn parts like --textured-fbx (a ground
+        // baked in several atlases), with its --textured-z / --textured-drop
+        var textured = new List<(string Fbx, string? Material, float? Z, float MinDraw, bool Ground)>();
+        if (texturedFbx != null) textured.Add((texturedFbx, texturedMaterial, texturedZ, 0f, true));
+        foreach (var (gf, gm) in texturedMore ?? []) textured.Add((gf, gm, texturedZ, 0f, true));
+        foreach (var (lf, lm) in lods ?? []) textured.Add((lf, lm, null, minDrawDistance, false));
         // --water-boxes x0,y0,x1,y1[,z];... --water-material pkg.mat (Kurt 2026-11-08: water without touching the sky): flat
         // boxes as a mesh and component of their own, always drawn, split into a vertex grid (--water-grid: translucent water
         // is fogged per vertex) and tiled every --water-uv units like the cells' filler. --add-sky-placeholders puts the same
         // boxes into the sky sphere instead, which ties them to the sky dome.
-        if (waterBoxes != null) textured.Add(("@water", waterMaterial, null, 0f));
-        foreach (var (tFbx, tMaterial, tZ, texturedMinDraw) in textured)
+        if (waterBoxes != null) textured.Add(("@water", waterMaterial, null, 0f, false));
+        foreach (var (tFbx, tMaterial, tZ, texturedMinDraw, isGround) in textured)
         {
             int tmRef = Array.FindIndex(live.Exports, e => live.PathOf(e).Equals(tMaterial ?? "", StringComparison.OrdinalIgnoreCase)
                 && live.ClassOf(e).StartsWith("MaterialInstance", StringComparison.OrdinalIgnoreCase)) + 1;
@@ -281,7 +284,7 @@ static class CellPlaceholders
                 int b = tp.Count;
                 // --textured-drop D (Midtown, 2026-11-09): the always-drawn mesh D under its own surface (a baked ground that
                 // stays at every distance, just below the real ground)
-                float drop = tFbx == texturedFbx && tMaterial == texturedMaterial && texturedMinDraw == 0 ? texturedDrop : 0f;
+                float drop = isGround ? texturedDrop : 0f;
                 tp.AddRange(sct.Positions.Select(q => tZ is float z ? new Vector3(q.X, q.Y, z) : new Vector3(q.X, q.Y, q.Z - drop)));
                 tn.AddRange(sct.Normals); tuv.AddRange(sct.TexCoords[0]); ti.AddRange(sct.Indices.Select(i => i + b));
             }
@@ -290,10 +293,16 @@ static class CellPlaceholders
             // the mesh's centre, which only suits a single building).
             // (an always-drawn LOD part too, not the ground: the Shipping Yard's tile-carried LOD, 2026-11-11, which without the
             // shrink sat on the real geometry and z-fought with it)
-            bool lodPart = texturedMinDraw > 0 || !(tFbx == texturedFbx && tMaterial == texturedMaterial) && tFbx != "@water";
+            bool lodPart = texturedMinDraw > 0 || !isGround && tFbx != "@water";
             if (lodPart && lodShrink != 0f)
                 for (int v = 0; v < tp.Count; v++)
                     if (tn[v].LengthSquared() > 1e-6f) tp[v] -= Vector3.Normalize(tn[v]) * lodShrink;
+            // --textured-shrink D (Midtown ground in 3, 2026-11-11): the always-drawn ground D in along its normals too, so the
+            // low wall bases baked into it (pieces under 100 tall) sit inside the real walls (Kurt: flicker around building
+            // bases, as the Shipping Yard's skirts before its ground was shrunk)
+            if (isGround && tFbx != "@water" && texturedShrink != 0f)
+                for (int v = 0; v < tp.Count; v++)
+                    if (tn[v].LengthSquared() > 1e-6f) tp[v] -= Vector3.Normalize(tn[v]) * texturedShrink;
             if (lodPart && (lodInset != 1f || lodDrop != 0f))
             {
                 Vector3 l0 = tp.Aggregate(Vector3.Min), l1 = tp.Aggregate(Vector3.Max), mid = (l0 + l1) / 2;
