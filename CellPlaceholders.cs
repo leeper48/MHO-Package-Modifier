@@ -265,7 +265,9 @@ static class CellPlaceholders
         foreach (var (tFbx, tMaterial, tZ, texturedMinDraw, isGround) in textured)
         {
             int tmRef = Array.FindIndex(live.Exports, e => live.PathOf(e).Equals(tMaterial ?? "", StringComparison.OrdinalIgnoreCase)
-                && live.ClassOf(e).StartsWith("MaterialInstance", StringComparison.OrdinalIgnoreCase)) + 1;
+                && (live.ClassOf(e).StartsWith("MaterialInstance", StringComparison.OrdinalIgnoreCase)
+                    // a base Material too (2.53.52, Buccaneer Beach's horizon ring: the level's sky dome uses its sky Material directly)
+                    || live.ClassOf(e).Equals("Material", StringComparison.OrdinalIgnoreCase))) + 1;
             if (tmRef == 0 || tmRef > n0) { Console.WriteLine($"  --textured-material: no material instance '{tMaterial}' among the package's existing exports"); return 1; }
             var tp = new List<Vector3>(); var tn = new List<Vector3>(); var tuv = new List<Vector2>(); var ti = new List<int>();
             if (tFbx == "@water")
