@@ -7,7 +7,10 @@ namespace MhoPackageModifier;
 /// --set-property: change the value of a bool, float, int, Color or LinearColor property that already exists in
 /// an export's tagged-property block. Same size, so only the value bytes change; the export is still re-appended
 /// through PackageWriter and written with the .bak / verify / swap workflow. Properties at their default
-/// value are omitted by UE3 and can't be set this way (adding a tag isn't supported yet).
+/// value are omitted by UE3; since 2.53.53 a missing float or int is added with a typed value, Name=float:0.2 or
+/// Name=int:3, and since 2.53.54 a Color struct, Name=color:R,G,B[,A] (Bamboo Forest's fog stores no colors) (Kurt, 2026-11-12: Lowtown's height fog stores no FogDensity / FogMaxOpacity): the tag goes in before the
+/// property block's None, its names are added to the name table when missing, and the package is rebuilt
+/// (PackageRebuilder) and verified by reading every changed value back.
 /// Material instance parameters are addressed as param:&lt;ParameterName&gt; (an entry of ScalarParameterValues /
 /// VectorParameterValues; its ParameterValue is changed), e.g. param:horizoncolor=0.03,0.09,0.14.
 /// </summary>
@@ -32,13 +35,49 @@ static class PropertyEdit
         foreach (var (k, v) in Params(pkg, original, props)) props.TryAdd(k, v);
         Console.WriteLine($"{Path.GetFileName(upkPath)} :: {pkg.PathOf(entry)} ({pkg.ClassOf(entry)}){(dryRun ? "  [dry run]" : "")}");
 
-        foreach (var (name, value) in changes)
+        var inserts = new List<(string Name, string Type, string? Struct, byte[] Value)>();
+        foreach (var (name, rawValue) in changes)
         {
+            // Typed value (float:0.2 / int:3): a missing property is added; a present one is just set
+            string value = rawValue;
+            string? addType = null;
+            if (rawValue.StartsWith("float:", StringComparison.OrdinalIgnoreCase)) { addType = "FloatProperty"; value = rawValue[6..]; }
+            else if (rawValue.StartsWith("int:", StringComparison.OrdinalIgnoreCase)) { addType = "IntProperty"; value = rawValue[4..]; }
+            else if (rawValue.StartsWith("color:", StringComparison.OrdinalIgnoreCase)) { addType = "Color"; value = rawValue[6..]; }
             if (!props.TryGetValue(name, out var prop))
             {
-                Console.WriteLine($"  '{name}' isn't in this export (it may be at its default value, which UE3 doesn't store). Present: {string.Join(", ", props.Keys)}");
-                return 1;
+                if (addType == null)
+                {
+                    Console.WriteLine($"  '{name}' isn't in this export (it may be at its default value, which UE3 doesn't store; add it with a typed value, {name}=float:<v> or {name}=int:<v>). Present: {string.Join(", ", props.Keys)}");
+                    return 1;
+                }
+                if (name.Contains('.') || name.StartsWith("param:", StringComparison.OrdinalIgnoreCase)) { Console.WriteLine($"  '{name}': only a top-level property can be added."); return 1; }
+                byte[] v = new byte[4];
+                if (addType == "Color")
+                {
+                    // stored B, G, R, A (see the Color case below)
+                    if (!TryParseColor(value, 255, 255, out var c)) { Console.WriteLine($"  '{value}' isn't a colour (use R,G,B or R,G,B,A with 0-255)."); return 1; }
+                    v = [(byte)c[2], (byte)c[1], (byte)c[0], (byte)c[3]];
+                    Console.WriteLine($"  {name}: (not stored, at its default) -> R{c[0]:0} G{c[1]:0} B{c[2]:0} A{c[3]:0}  [added as a Color struct]");
+                    inserts.Add((name, "StructProperty", "Color", v));
+                    continue;
+                }
+                if (addType == "FloatProperty")
+                {
+                    if (!float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float f)) { Console.WriteLine($"  '{value}' isn't a number."); return 1; }
+                    BinaryPrimitives.WriteSingleLittleEndian(v, f);
+                }
+                else
+                {
+                    if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int n)) { Console.WriteLine($"  '{value}' isn't an integer."); return 1; }
+                    BinaryPrimitives.WriteInt32LittleEndian(v, n);
+                }
+                Console.WriteLine($"  {name}: (not stored, at its default) -> {value}  [added as {addType}]");
+                inserts.Add((name, addType, null, v));
+                continue;
             }
+            if (addType == "FloatProperty" && prop.Type != "floatproperty" || addType == "IntProperty" && prop.Type != "intproperty" || addType == "Color" && !IsColor(prop))
+            { Console.WriteLine($"  '{name}' is a {prop.Type}, not {addType}."); return 1; }
             switch (prop.Type)
             {
                 case "floatproperty" when prop.Size == 4:
@@ -83,6 +122,8 @@ static class PropertyEdit
             }
         }
 
+        if (inserts.Count > 0) return Insert(upkPath, pkg, index, edited, inserts, dryRun);
+
         byte[] packageBytes = PackageWriter.ReplaceExport(pkg, index, _ => edited);
         var written = Package.FromBytes(packageBytes);
         var problems = PackageWriter.Verify(pkg, written, index, edited);
@@ -101,6 +142,59 @@ static class PropertyEdit
             return 0;
         }
         return MeshImport.WriteLive(upkPath, pkg, index, edited, packageBytes) ? 0 : 1;
+    }
+
+    /// <summary>Adds the missing tags before the block's None (after <paramref name="edited"/>'s in-place changes), adding
+    /// names as needed, rebuilds the package and checks that every existing property and every added one reads back.</summary>
+    static int Insert(string upkPath, Package pkg, int index, byte[] edited, List<(string Name, string Type, string? Struct, byte[] Value)> inserts, bool dryRun)
+    {
+        int start = -1;
+        foreach (int st in new[] { 4, 8 }.Concat(Enumerable.Range(9, 88)))
+            if (Walk(pkg, edited, st, edited.Length, "", new Dictionary<string, Prop>(StringComparer.OrdinalIgnoreCase))) { start = st; break; }
+        var tags = start < 0 ? null : TagWalker.Walk(pkg, edited, start);
+        if (tags == null) { Console.WriteLine("  Couldn't find the end of the property block; nothing changed."); return 1; }
+        var addNames = inserts.SelectMany(i => i.Struct == null ? new[] { i.Name, i.Type } : new[] { i.Name, i.Type, i.Struct }).Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(n => !pkg.Names.Any(x => x.Equals(n, StringComparison.OrdinalIgnoreCase))).ToList();
+        var tw = new TagWriter(pkg, addNames);
+        using var ms = new MemoryStream();
+        ms.Write(edited, 0, tags.NoneAt);
+        foreach (var i in inserts) ms.Write(tw.Tag(i.Name, i.Type, i.Struct, i.Value));
+        ms.Write(edited, tags.NoneAt, edited.Length - tags.NoneAt);
+        byte[] bytes = ms.ToArray();
+        int tail = edited.Length - tags.NoneAt;
+        var replace = new Dictionary<int, Func<long, byte[]>> { [index] = _ => bytes };
+        byte[] output = PackageRebuilder.Rebuild(pkg, replace, [], out var written, addNames);
+        var before = Locate(pkg, edited)!;
+        List<string> Check(byte[] b)
+        {
+            var problems = PackageRebuilder.Verify(pkg, b, [index], [], written, addNames);
+            var w = Package.FromBytes(b);
+            byte[] d = w.ReadExportBytes(w.Exports[index]);
+            var after = Locate(w, d);
+            if (after == null) { problems.Add("the export's properties don't parse after the insert"); return problems; }
+            foreach (var (k, p) in before)
+                if (!after.TryGetValue(k, out var q) || q.Type != p.Type || !d.AsSpan(q.ValueAt, q.Size).SequenceEqual(edited.AsSpan(p.ValueAt, p.Size)))
+                    problems.Add($"'{k}' doesn't read back as before");
+            foreach (var i in inserts)
+                if (!after.TryGetValue(i.Name, out var q) || q.Type != i.Type.ToLowerInvariant() || !d.AsSpan(q.ValueAt, 4).SequenceEqual(i.Value))
+                    problems.Add($"added '{i.Name}' doesn't read back");
+            if (d.Length < tail || !d.AsSpan(d.Length - tail).SequenceEqual(edited.AsSpan(tags.NoneAt))) problems.Add("the data after the property block changed");
+            return problems;
+        }
+        var problems = Check(output);
+        if (problems.Count > 0) { Console.WriteLine("  verify: FAIL"); problems.ForEach(x => Console.WriteLine($"    - {x}")); Console.WriteLine("  Nothing written."); return 1; }
+        string namesNote = addNames.Count > 0 ? ", name(s) added: " + string.Join(", ", addNames) : "";
+        Console.WriteLine($"  verify: PASS (rebuilt: {inserts.Count} property tag(s) added{namesNote}; every existing property reads back unchanged or as set, every other export byte-identical)");
+        if (dryRun)
+        {
+            string dir = Path.Combine(AppContext.BaseDirectory, "import_out");
+            Directory.CreateDirectory(dir);
+            string target = Path.Combine(dir, Path.GetFileName(upkPath));
+            File.WriteAllBytes(target, output);
+            Console.WriteLine($"  dry run: wrote {target} (game folder untouched)");
+            return 0;
+        }
+        return MeshImport.WriteLive(upkPath, output, Check) ? 0 : 1;
     }
 
     sealed record Prop(string Type, int Size, int ValueAt, string Inner = "");
