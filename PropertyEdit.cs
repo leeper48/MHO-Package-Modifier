@@ -8,7 +8,7 @@ namespace MhoPackageModifier;
 /// an export's tagged-property block. Same size, so only the value bytes change; the export is still re-appended
 /// through PackageWriter and written with the .bak / verify / swap workflow. Properties at their default
 /// value are omitted by UE3; since 2.53.53 a missing float or int is added with a typed value, Name=float:0.2 or
-/// Name=int:3, and since 2.53.54 a Color struct, Name=color:R,G,B[,A] (Bamboo Forest's fog stores no colors) (Kurt, 2026-11-12: Lowtown's height fog stores no FogDensity / FogMaxOpacity): the tag goes in before the
+/// Name=int:3, since 2.53.54 a Color struct, Name=color:R,G,B[,A], and since 2.53.55 a Vector struct, Name=vector:X,Y,Z (Bamboo Forest's fog stores no colors) (Kurt, 2026-11-12: Lowtown's height fog stores no FogDensity / FogMaxOpacity): the tag goes in before the
 /// property block's None, its names are added to the name table when missing, and the package is rebuilt
 /// (PackageRebuilder) and verified by reading every changed value back.
 /// Material instance parameters are addressed as param:&lt;ParameterName&gt; (an entry of ScalarParameterValues /
@@ -44,6 +44,7 @@ static class PropertyEdit
             if (rawValue.StartsWith("float:", StringComparison.OrdinalIgnoreCase)) { addType = "FloatProperty"; value = rawValue[6..]; }
             else if (rawValue.StartsWith("int:", StringComparison.OrdinalIgnoreCase)) { addType = "IntProperty"; value = rawValue[4..]; }
             else if (rawValue.StartsWith("color:", StringComparison.OrdinalIgnoreCase)) { addType = "Color"; value = rawValue[6..]; }
+            else if (rawValue.StartsWith("vector:", StringComparison.OrdinalIgnoreCase)) { addType = "Vector"; value = rawValue[7..]; }
             if (!props.TryGetValue(name, out var prop))
             {
                 if (addType == null)
@@ -62,6 +63,16 @@ static class PropertyEdit
                     inserts.Add((name, "StructProperty", "Color", v));
                     continue;
                 }
+                if (addType == "Vector")
+                {
+                    // an actor's Location (2.53.55: Old Trainyard's height fog actor stores none, so it sits at Z 0)
+                    if (!TryParseVector(value, out var xyz)) { Console.WriteLine($"  '{value}' isn't a vector (use X,Y,Z)."); return 1; }
+                    var vb = new byte[12];
+                    for (int k = 0; k < 3; k++) BinaryPrimitives.WriteSingleLittleEndian(vb.AsSpan(k * 4), xyz[k]);
+                    Console.WriteLine($"  {name}: (not stored, at its default) -> X{xyz[0]} Y{xyz[1]} Z{xyz[2]}  [added as a Vector struct]");
+                    inserts.Add((name, "StructProperty", "Vector", vb));
+                    continue;
+                }
                 if (addType == "FloatProperty")
                 {
                     if (!float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float f)) { Console.WriteLine($"  '{value}' isn't a number."); return 1; }
@@ -76,7 +87,7 @@ static class PropertyEdit
                 inserts.Add((name, addType, null, v));
                 continue;
             }
-            if (addType == "FloatProperty" && prop.Type != "floatproperty" || addType == "IntProperty" && prop.Type != "intproperty" || addType == "Color" && !IsColor(prop))
+            if (addType == "FloatProperty" && prop.Type != "floatproperty" || addType == "IntProperty" && prop.Type != "intproperty" || addType == "Color" && !IsColor(prop) || addType == "Vector" && !IsVector(prop))
             { Console.WriteLine($"  '{name}' is a {prop.Type}, not {addType}."); return 1; }
             switch (prop.Type)
             {
@@ -117,8 +128,16 @@ static class PropertyEdit
                     for (int k = 0; k < 4; k++) BinaryPrimitives.WriteSingleLittleEndian(span[(k * 4)..], c[k]);
                     break;
                 }
+                case "structproperty" when IsVector(prop):
+                {
+                    var span = edited.AsSpan(prop.ValueAt);
+                    if (!TryParseVector(value, out var xyz)) { Console.WriteLine($"  '{value}' isn't a vector (use X,Y,Z)."); return 1; }
+                    Console.WriteLine($"  {name}: X{BinaryPrimitives.ReadSingleLittleEndian(span)} Y{BinaryPrimitives.ReadSingleLittleEndian(span[4..])} Z{BinaryPrimitives.ReadSingleLittleEndian(span[8..])} -> X{xyz[0]} Y{xyz[1]} Z{xyz[2]}");
+                    for (int k = 0; k < 3; k++) BinaryPrimitives.WriteSingleLittleEndian(span[(k * 4)..], xyz[k]);
+                    break;
+                }
                 default:
-                    Console.WriteLine($"  '{name}' is a {prop.Type} {prop.Inner} (size {prop.Size}); only bool, float, int, Color and LinearColor are supported so far."); return 1;
+                    Console.WriteLine($"  '{name}' is a {prop.Type} {prop.Inner} (size {prop.Size}); only bool, float, int, Color, LinearColor and Vector are supported so far."); return 1;
             }
         }
 
@@ -176,7 +195,7 @@ static class PropertyEdit
                 if (!after.TryGetValue(k, out var q) || q.Type != p.Type || !d.AsSpan(q.ValueAt, q.Size).SequenceEqual(edited.AsSpan(p.ValueAt, p.Size)))
                     problems.Add($"'{k}' doesn't read back as before");
             foreach (var i in inserts)
-                if (!after.TryGetValue(i.Name, out var q) || q.Type != i.Type.ToLowerInvariant() || !d.AsSpan(q.ValueAt, 4).SequenceEqual(i.Value))
+                if (!after.TryGetValue(i.Name, out var q) || q.Type != i.Type.ToLowerInvariant() || q.Size != i.Value.Length || !d.AsSpan(q.ValueAt, i.Value.Length).SequenceEqual(i.Value))
                     problems.Add($"added '{i.Name}' doesn't read back");
             if (d.Length < tail || !d.AsSpan(d.Length - tail).SequenceEqual(edited.AsSpan(tags.NoneAt))) problems.Add("the data after the property block changed");
             return problems;
@@ -200,6 +219,15 @@ static class PropertyEdit
     sealed record Prop(string Type, int Size, int ValueAt, string Inner = "");
 
     static bool IsColor(Prop p) => p.Type == "structproperty" && p.Size == 4 && p.Inner.Equals("Color", StringComparison.OrdinalIgnoreCase);
+    static bool IsVector(Prop p) => p.Type == "structproperty" && p.Size == 12 && p.Inner.Equals("Vector", StringComparison.OrdinalIgnoreCase);
+    static bool TryParseVector(string s, out float[] v)
+    {
+        v = new float[3];
+        var parts = s.Split(',');
+        if (parts.Length != 3) return false;
+        for (int k = 0; k < 3; k++) if (!float.TryParse(parts[k].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out v[k])) return false;
+        return true;
+    }
     static bool IsLinearColor(Prop p) => p.Type == "structproperty" && p.Size == 16 && p.Inner.Equals("LinearColor", StringComparison.OrdinalIgnoreCase);
 
     static string ColorText(ReadOnlySpan<byte> bgra) => $"R{bgra[2]} G{bgra[1]} B{bgra[0]} A{bgra[3]}";

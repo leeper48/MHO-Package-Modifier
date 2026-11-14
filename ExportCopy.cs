@@ -501,7 +501,7 @@ static class ExportCopy
         bool templated = !classDefault && (c.StartsWith("marvelentitycomp") || c.StartsWith("powerfx") || c.StartsWith("projectilefx") || c.StartsWith("conditionfx")
             || c == "dynamiclightenvironmentcomponent" || c == "skeletalmeshcomponent");
         if (classDefault) component = false;
-        if (component && c != "staticmeshcomponent" && !templated && !distribution) throw new InvalidDataException($"component class '{cls}' not supported");
+        if (component && c != "staticmeshcomponent" && c != "exponentialheightfogcomponent" && !templated && !distribution) throw new InvalidDataException($"component class '{cls}' not supported");
         var list = new List<Patch>();
         if (templated)
         {
@@ -509,6 +509,18 @@ static class ExportCopy
             list.Add(new Patch(4, Kind.Name, "templatename"));
             int q = Tags(pkg, d, 16, d.Length, "", list);
             if (q != d.Length) throw new InvalidDataException($"{d.Length - q} bytes after the component's properties (none expected)");
+            return list;
+        }
+        // A height fog actor (2.53.55, Old Trainyard: Wretched Slum's working fog copied in) starts with a script state frame:
+        // Node and StateNode (object refs), ProbeMask (4), LatentAction (2), an empty state stack (count 0), Offset (-1), then
+        // NetIndex, properties from byte 26 and no native data (checked with --dump-export on 7 levels' fog actors).
+        if (c == "exponentialheightfog")
+        {
+            if (d.Length < 30 || I32(d, 14) != 0) throw new InvalidDataException("height fog actor: state frame with a state stack isn't supported");
+            list.Add(new Patch(0, Kind.Object, "stateframe.node"));
+            list.Add(new Patch(4, Kind.Object, "stateframe.statenode"));
+            int fq = Tags(pkg, d, 26, d.Length, "", list);
+            if (fq != d.Length) throw new InvalidDataException($"{d.Length - fq} bytes after the fog actor's properties (none expected)");
             return list;
         }
         // MHO components: an extra int32, then NetIndex, then properties (byte 8); everything else from byte 4.
@@ -524,6 +536,10 @@ static class ExportCopy
         // MaterialInstanceTimeVarying: a MaterialInstance like the constant one (its curves are tagged properties), same native data
         else if (c is "materialinstanceconstant" or "materialinstancetimevarying") { if (p != d.Length) MaterialNative(pkg, d, p, true, list); }
         else if (c is "texture2d" or "textureflipbook") TextureMips(d, p, list);
+        else if (c == "exponentialheightfogcomponent")
+        {
+            if (p != d.Length) throw new InvalidDataException($"{d.Length - p} bytes of native data (none expected)");
+        }
         else if (c == "staticmeshcollectionactor")
         {
             if (p != d.Length) throw new InvalidDataException($"{d.Length - p} bytes of native data (none expected)");
